@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, History, Settings, MessageSquare, Phone, CheckCircle, AlertCircle, Clock, Shield, LogOut, Zap, Target, BarChart3, Activity, Moon, Sun, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, History, Settings, MessageSquare, Phone, CheckCircle, AlertCircle, Clock, Shield, LogOut, Zap, Target, BarChart3, Activity, Moon, Sun, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 interface SMSData {
   recipient: string;
@@ -18,6 +18,12 @@ interface LoginData {
   token?: string;
 }
 
+interface Toast {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [smsHistory, setSmsHistory] = useState<SMSData[]>([]);
@@ -31,6 +37,7 @@ function App() {
   const [mode, setMode] = useState<'normal' | 'turbo'>('turbo');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const logsPerPage = 10;
 
   const email = 'mehmetyilmaz24121@gmail.com';
@@ -83,16 +90,32 @@ function App() {
     setIsDarkMode(!isDarkMode);
   };
 
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    const newToast: Toast = { id, message, type };
+    setToasts(prev => [...prev, newToast]);
+    
+    // 4 saniye sonra toast'ı kaldır
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
   const clearHistory = () => {
     if (window.confirm('Tüm SMS geçmişini silmek istediğinizden emin misiniz?')) {
       setSmsHistory([]);
       setCurrentPage(1);
+      showToast('SMS geçmişi temizlendi', 'success');
     }
   };
 
   const handleLogin = async () => {
     if (!key) {
-      alert('Lütfen key girin!');
+      showToast('Lütfen key girin!', 'error');
       return;
     }
 
@@ -110,8 +133,9 @@ function App() {
       setLoginData({ isLoggedIn: true, isAdmin: data.is_admin, token: data.access_token });
       setActiveTab('send');
       setKey('');
-    } catch (err) {
-      alert(`Hata: ${err.message}`);
+      showToast('Başarıyla giriş yapıldı', 'success');
+    } catch (err: any) {
+      showToast(`Hata: ${err.message}`, 'error');
     }
   };
 
@@ -119,27 +143,28 @@ function App() {
     setLoginData({ isLoggedIn: false, isAdmin: false });
     setActiveTab('login');
     setKey('');
+    showToast('Çıkış yapıldı', 'info');
   };
 
   const sendSMS = async () => {
     if (!apiUrl) {
-      alert('Lütfen önce API URL\'ini ayarlayın!');
+      showToast('Lütfen önce API URL\'ini ayarlayın!', 'error');
       if (loginData.isAdmin) setActiveTab('settings');
       return;
     }
 
     if (!phone) {
-      alert('Lütfen telefon numarası girin!');
+      showToast('Lütfen telefon numarası girin!', 'error');
       return;
     }
 
     if (phone.length !== 10) {
-      alert('Telefon numarası 10 haneli olmalıdır!');
+      showToast('Telefon numarası 10 haneli olmalıdır!', 'error');
       return;
     }
 
     if (count === 0) {
-      alert('Lütfen SMS sayısını belirtin!');
+      showToast('Lütfen SMS sayısını belirtin!', 'error');
       return;
     }
 
@@ -177,13 +202,13 @@ function App() {
           : sms
       ));
 
-      alert(`SMS gönderim tamamlandı!\nBaşarılı: ${result.success}\nBaşarısız: ${result.failed}`);
+      showToast(`SMS gönderim tamamlandı! Başarılı: ${result.success}, Başarısız: ${result.failed}`, 'success');
     } catch (err) {
       console.error('SMS gönderim hatası:', err);
       setSmsHistory(prev => prev.map(sms =>
         sms.id === newSMS.id ? { ...sms, status: 'failed' } : sms
       ));
-      alert('SMS gönderiminde hata oluştu!');
+      showToast('SMS gönderiminde hata oluştu!', 'error');
     } finally {
       setIsLoading(false);
       setPhone('');
@@ -254,8 +279,8 @@ function App() {
   if (!loginData.isLoggedIn) {
     return (
       <div className={themeClasses}>
-        {/* Tema Değiştirici */}
-        <div className="absolute top-4 left-4 z-10">
+        {/* Tema Değiştirici - Sağ Üst */}
+        <div className="absolute top-4 right-4 z-10">
           <button
             onClick={toggleTheme}
             className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
@@ -269,7 +294,7 @@ function App() {
             <div className="text-center mb-8">
               <div className="flex items-center justify-center mb-4">
                 <Shield className={`w-12 h-12 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🔐 SMS Panel</h1>
+                <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Panel</h1>
               </div>
               <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Güvenli giriş yapın</p>
             </div>
@@ -309,8 +334,37 @@ function App() {
 
   return (
     <div className={themeClasses}>
-      {/* Tema Değiştirici */}
-      <div className="absolute top-4 left-4 z-10">
+      {/* Toast Bildirimleri */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
+              toast.type === 'success'
+                ? 'bg-green-500/90 border-green-400 text-white'
+                : toast.type === 'error'
+                ? 'bg-red-500/90 border-red-400 text-white'
+                : 'bg-blue-500/90 border-blue-400 text-white'
+            }`}
+          >
+            <div className="flex items-center">
+              {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
+              {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
+              {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
+              <span className="text-sm font-medium">{toast.message}</span>
+            </div>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Tema Değiştirici - Sağ Üst */}
+      <div className="absolute top-4 right-4 z-10">
         <button
           onClick={toggleTheme}
           className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
@@ -323,10 +377,10 @@ function App() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <MessageSquare className={`w-12 h-12 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-            <h1 className={`text-4xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>📲 SMS Gönderim Sistemi</h1>
+            <h1 className={`text-4xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Gönderim Sistemi</h1>
           </div>
           <p className={`text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            {loginData.isAdmin ? '👑 Admin Paneli - Tüm Özellikler' : '👤 Kullanıcı Paneli - SMS Gönderim'}
+            {loginData.isAdmin ? 'Admin Paneli - Tüm Özellikler' : 'Kullanıcı Paneli - SMS Gönderim'}
           </p>
         </div>
 
@@ -438,7 +492,7 @@ function App() {
                       }`}
                     >
                       <Target className="w-5 h-5 mr-2" />
-                      🎯 Normal Gönderim
+                      Normal Gönderim
                     </button>
                     <button
                       onClick={() => setMode('turbo')}
@@ -449,7 +503,7 @@ function App() {
                       }`}
                     >
                       <Zap className="w-5 h-5 mr-2" />
-                      ⚡ Turbo Gönderim
+                      Turbo Gönderim
                     </button>
                   </div>
                 </div>
@@ -468,7 +522,7 @@ function App() {
                     ) : (
                       <>
                         <Send className="w-5 h-5 mr-3" />
-                        🚀 Gönder
+                        Gönder
                       </>
                     )}
                   </button>
@@ -482,7 +536,7 @@ function App() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className={`text-2xl font-bold flex items-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   <History className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                  📋 SMS Geçmişi
+                  SMS Geçmişi
                 </h2>
                 {smsHistory.length > 0 && (
                   <button
@@ -516,7 +570,7 @@ function App() {
                                 ? 'bg-purple-900/50 text-purple-300' 
                                 : 'bg-blue-900/50 text-blue-300'
                             }`}>
-                              {sms.mode === 'turbo' ? '⚡ Turbo' : '🎯 Normal'}
+                              {sms.mode === 'turbo' ? 'Turbo' : 'Normal'}
                             </span>
                           </div>
                           <div className="text-right">
@@ -598,7 +652,7 @@ function App() {
             <div className={`${cardClasses} rounded-2xl shadow-2xl p-8`}>
               <h2 className={`text-2xl font-bold mb-6 flex items-center justify-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 <Settings className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                ⚙️ Ayarlar
+                Ayarlar
               </h2>
 
               <div className="max-w-2xl mx-auto space-y-8">
@@ -636,8 +690,8 @@ function App() {
                         },
                         body: JSON.stringify({ api_url: apiUrl }),
                       });
-                      if (res.ok) alert('API URL kaydedildi!');
-                      else alert('Kaydetme başarısız!');
+                      if (res.ok) showToast('API URL kaydedildi!', 'success');
+                      else showToast('Kaydetme başarısız!', 'error');
                     }}
                     className={`mt-2 px-4 py-2 rounded-lg ${buttonClasses} text-white`}
                   >
@@ -648,7 +702,7 @@ function App() {
                 <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-blue-900/20 border border-blue-700/50' : 'bg-blue-50 border border-blue-200'}`}>
                   <h3 className={`font-semibold mb-4 flex items-center justify-center ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
                     <MessageSquare className="w-5 h-5 mr-2" />
-                    🔧 Backend Kurulum Rehberi:
+                    Backend Kurulum Rehberi:
                   </h3>
                   <ol className={`text-sm space-y-2 list-decimal list-inside text-center ${isDarkMode ? 'text-blue-200' : 'text-blue-600'}`}>
                     <li>FastAPI ile API endpoint'leri oluşturun</li>
@@ -661,7 +715,7 @@ function App() {
 
                 <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-purple-900/20 border border-purple-700/50' : 'bg-purple-50 border border-purple-200'}`}>
                   <h3 className={`font-semibold mb-4 text-center ${isDarkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-                    📊 Sistem Özellikleri:
+                    Sistem Özellikleri:
                   </h3>
                   <ul className={`text-sm space-y-1 text-center ${isDarkMode ? 'text-purple-200' : 'text-purple-600'}`}>
                     <li>• 40+ farklı SMS servisi entegrasyonu</li>
