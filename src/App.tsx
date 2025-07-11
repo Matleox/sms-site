@@ -14,87 +14,91 @@ interface SMSData {
 interface LoginData {
   isLoggedIn: boolean;
   isAdmin: boolean;
+  token?: string;
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [smsHistory, setSmsHistory] = useState<SMSData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [replitApiUrl, setReplitApiUrl] = useState('');
+  const [backendUrl, setBackendUrl] = useState('https://sms-api-qb7q.onrender.com');
+  const [apiUrl, setApiUrl] = useState('');
   const [loginData, setLoginData] = useState<LoginData>({ isLoggedIn: false, isAdmin: false });
-  
-  // SMS Form States
+  const [key, setKey] = useState('');
   const [phone, setPhone] = useState('');
   const [count, setCount] = useState(0);
   const [mode, setMode] = useState<'normal' | 'turbo'>('turbo');
-  
-  // Login States
-  const [password, setPassword] = useState('');
 
-  // Fixed email - kullanıcı değiştiremez
   const email = 'mehmetyilmaz24121@gmail.com';
 
-  // Load data from localStorage on component mount
   useEffect(() => {
+    fetch(`${backendUrl}/get-backend-url`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(res => res.json())
+      .then(data => {
+        const url = data.backend_url || 'https://sms-api-qb7q.onrender.com';
+        setBackendUrl(url);
+        return fetch(`${url}/get-api-url`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      })
+      .then(res => res.json())
+      .then(data => setApiUrl(data.api_url || ''))
+      .catch(err => console.error('API URL alınamadı:', err));
+
     const savedHistory = localStorage.getItem('smsHistory');
-    const savedApiUrl = localStorage.getItem('replitApiUrl');
     const savedLogin = localStorage.getItem('loginData');
-    
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
-    if (savedApiUrl) setReplitApiUrl(savedApiUrl);
     if (savedLogin) {
       const login = JSON.parse(savedLogin);
       setLoginData(login);
-      if (login.isLoggedIn) {
-        setActiveTab('send');
-      }
+      if (login.isLoggedIn) setActiveTab('send');
     }
   }, []);
 
-  // Save to localStorage whenever data changes
   useEffect(() => {
     localStorage.setItem('smsHistory', JSON.stringify(smsHistory));
-  }, [smsHistory]);
-
-  useEffect(() => {
-    localStorage.setItem('replitApiUrl', replitApiUrl);
-  }, [replitApiUrl]);
-
-  useEffect(() => {
     localStorage.setItem('loginData', JSON.stringify(loginData));
-  }, [loginData]);
+  }, [smsHistory, loginData]);
 
   const handleLogin = async () => {
-    if (!password) {
-      alert('Lütfen şifre girin!');
+    if (!key) {
+      alert('Lütfen key girin!');
       return;
     }
 
-    // Simulated login - gerçek uygulamada API çağrısı yapılacak
-    if (password === 'admin123') {
-      setLoginData({ isLoggedIn: true, isAdmin: true });
+    try {
+      const res = await fetch(`${backendUrl}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('Key bulunamadı!');
+        throw new Error(await res.text());
+      }
+      const data = await res.json();
+      setLoginData({ isLoggedIn: true, isAdmin: data.is_admin, token: data.access_token });
       setActiveTab('send');
-    } else if (password === 'user123') {
-      setLoginData({ isLoggedIn: true, isAdmin: false });
-      setActiveTab('send');
-    } else {
-      alert('Hatalı şifre!');
+      setKey('');
+    } catch (err) {
+      alert(`Hata: ${err.message}`);
     }
-    setPassword('');
   };
 
   const handleLogout = () => {
     setLoginData({ isLoggedIn: false, isAdmin: false });
     setActiveTab('login');
-    setPassword('');
+    setKey('');
   };
 
   const sendSMS = async () => {
-    if (!replitApiUrl) {
-      alert('Lütfen önce Replit API URL\'ini ayarlayın!');
-      if (loginData.isAdmin) {
-        setActiveTab('settings');
-      }
+    if (!apiUrl) {
+      alert('Lütfen önce API URL\'ini ayarlayın!');
+      if (loginData.isAdmin) setActiveTab('settings');
       return;
     }
 
@@ -122,58 +126,39 @@ function App() {
       status: 'sending',
       timestamp: new Date().toLocaleString('tr-TR'),
       successCount: 0,
-      failedCount: 0
+      failedCount: 0,
     };
 
     setSmsHistory(prev => [newSMS, ...prev]);
 
     try {
-      const response = await fetch(replitApiUrl, {
+      const res = await fetch(`${backendUrl}/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`,
         },
-        body: JSON.stringify({
-          phone: phone,
-          email: email,
-          count: count,
-          mode: mode === 'turbo' ? 2 : 1
-        })
+        body: JSON.stringify({ phone, email, count, mode: mode === 'turbo' ? 2 : 1 }),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Update SMS status
-        setSmsHistory(prev => prev.map(sms => 
-          sms.timestamp === newSMS.timestamp 
-            ? { 
-                ...sms, 
-                status: 'completed',
-                successCount: result.success || Math.floor(count * 0.8),
-                failedCount: result.failed || Math.floor(count * 0.2)
-              }
-            : sms
-        ));
+      if (!res.ok) throw new Error(await res.text());
+      const result = await res.json();
 
-        alert(`SMS gönderim tamamlandı!\nBaşarılı: ${result.success || Math.floor(count * 0.8)}\nBaşarısız: ${result.failed || Math.floor(count * 0.2)}`);
-      } else {
-        throw new Error('API hatası');
-      }
-    } catch (error) {
-      console.error('SMS gönderim hatası:', error);
-      
-      // Update SMS status to failed
-      setSmsHistory(prev => prev.map(sms => 
-        sms.timestamp === newSMS.timestamp 
-          ? { ...sms, status: 'failed' }
+      setSmsHistory(prev => prev.map(sms =>
+        sms.timestamp === newSMS.timestamp
+          ? { ...sms, status: 'completed', successCount: result.success, failedCount: result.failed }
           : sms
       ));
-      
+
+      alert(`SMS gönderim tamamlandı!\nBaşarılı: ${result.success}\nBaşarısız: ${result.failed}`);
+    } catch (err) {
+      console.error('SMS gönderim hatası:', err);
+      setSmsHistory(prev => prev.map(sms =>
+        sms.timestamp === newSMS.timestamp ? { ...sms, status: 'failed' } : sms
+      ));
       alert('SMS gönderiminde hata oluştu!');
     } finally {
       setIsLoading(false);
-      // Clear form
       setPhone('');
       setCount(0);
     }
@@ -198,16 +183,21 @@ function App() {
   };
 
   const getTotalStats = () => {
-    const total = smsHistory.reduce((acc, sms) => ({
+    return smsHistory.reduce((acc, sms) => ({
+      total: acc.total + sms.count,
       sent: acc.sent + sms.successCount,
       failed: acc.failed + sms.failedCount,
-      total: acc.total + sms.count
-    }), { sent: 0, failed: 0, total: 0 });
-    
-    return total;
+    }), { total: 0, sent: 0, failed: 0 });
   };
 
-  // Login Screen
+  const userTabs = [{ id: 'send', label: 'SMS Gönder', icon: Send }];
+  const adminTabs = [
+    { id: 'send', label: 'SMS Gönder', icon: Send },
+    { id: 'history', label: 'Geçmiş', icon: History },
+    { id: 'settings', label: 'Ayarlar', icon: Settings },
+  ];
+  const availableTabs = loginData.isAdmin ? adminTabs : userTabs;
+
   if (!loginData.isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
@@ -223,14 +213,14 @@ function App() {
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Şifre
+                Key
               </label>
               <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                type="text"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                placeholder="Şifrenizi girin"
+                placeholder="Key girin"
                 className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
               />
             </div>
@@ -244,7 +234,7 @@ function App() {
             </button>
 
             <div className="text-center text-sm text-gray-400">
-              <p>Demo: user123 (Kullanıcı) | admin123 (Admin)</p>
+              <p>Demo: admin123 (Admin) | user123 (Kullanıcı)</p>
             </div>
           </div>
         </div>
@@ -252,24 +242,9 @@ function App() {
     );
   }
 
-  // User Navigation (sadece SMS gönder ve çıkış)
-  const userTabs = [
-    { id: 'send', label: 'SMS Gönder', icon: Send }
-  ];
-
-  // Admin Navigation (tüm özellikler)
-  const adminTabs = [
-    { id: 'send', label: 'SMS Gönder', icon: Send },
-    { id: 'history', label: 'Geçmiş', icon: History },
-    { id: 'settings', label: 'Ayarlar', icon: Settings }
-  ];
-
-  const availableTabs = loginData.isAdmin ? adminTabs : userTabs;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <MessageSquare className="w-12 h-12 text-blue-400 mr-3" />
@@ -280,14 +255,13 @@ function App() {
           </p>
         </div>
 
-        {/* Stats Cards - Sadece Admin için */}
         {loginData.isAdmin && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             {[
               { label: 'Toplam Gönderim', value: getTotalStats().total, icon: Target, color: 'blue' },
               { label: 'Başarılı', value: getTotalStats().sent, icon: CheckCircle, color: 'green' },
               { label: 'Başarısız', value: getTotalStats().failed, icon: AlertCircle, color: 'red' },
-              { label: 'İşlem Sayısı', value: smsHistory.length, icon: BarChart3, color: 'purple' }
+              { label: 'İşlem Sayısı', value: smsHistory.length, icon: BarChart3, color: 'purple' },
             ].map((stat, index) => (
               <div key={index} className="bg-gray-800/50 backdrop-blur-lg rounded-xl p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
@@ -302,7 +276,6 @@ function App() {
           </div>
         )}
 
-        {/* Navigation */}
         <div className="flex justify-center mb-8">
           <div className="bg-gray-800/50 backdrop-blur-lg rounded-xl shadow-lg p-2 flex space-x-2 border border-gray-700">
             {availableTabs.map(tab => (
@@ -329,16 +302,14 @@ function App() {
           </div>
         </div>
 
-        {/* Content */}
         <div className="max-w-4xl mx-auto">
-          {/* SMS Gönder Tab */}
           {activeTab === 'send' && (
             <div className="bg-gray-800/50 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-gray-700">
               <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
                 <Send className="w-6 h-6 mr-3 text-blue-400" />
                 SMS Gönder
               </h2>
-              
+
               <div className="grid md:grid-cols-2 gap-8">
                 <div className="space-y-6 order-2 md:order-1">
                   <div>
@@ -431,7 +402,6 @@ function App() {
             </div>
           )}
 
-          {/* Geçmiş Tab - Sadece Admin */}
           {activeTab === 'history' && loginData.isAdmin && (
             <div className="bg-gray-800/50 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-gray-700">
               <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
@@ -465,7 +435,7 @@ function App() {
                           <div className="text-sm font-medium text-white">{getStatusText(sms.status)}</div>
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div className="text-center">
                           <div className="text-gray-400">Toplam</div>
@@ -487,7 +457,6 @@ function App() {
             </div>
           )}
 
-          {/* Ayarlar Tab - Sadece Admin */}
           {activeTab === 'settings' && loginData.isAdmin && (
             <div className="bg-gray-800/50 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-gray-700">
               <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
@@ -498,32 +467,58 @@ function App() {
               <div className="max-w-2xl space-y-8">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Replit API URL
+                    Backend URL
                   </label>
                   <input
                     type="url"
-                    value={replitApiUrl}
-                    onChange={(e) => setReplitApiUrl(e.target.value)}
-                    placeholder="https://your-repl-name.username.repl.co/api/sms"
+                    value={backendUrl}
+                    onChange={(e) => setBackendUrl(e.target.value)}
+                    placeholder="https://sms-api-qb7q.onrender.com"
                     className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
                   />
-                  <p className="text-sm text-gray-400 mt-2">
-                    Replit'teki Python SMS API'nizin URL'ini buraya girin
-                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    SMS API URL
+                  </label>
+                  <input
+                    type="url"
+                    value={apiUrl}
+                    onChange={(e) => setApiUrl(e.target.value)}
+                    placeholder="https://your-api-url.com"
+                    className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                  />
+                  <button
+                    onClick={async () => {
+                      const res = await fetch(`${backendUrl}/admin/set-api-url`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${loginData.token}`,
+                        },
+                        body: JSON.stringify({ api_url: apiUrl }),
+                      });
+                      if (res.ok) alert('API URL kaydedildi!');
+                      else alert('Kaydetme başarısız!');
+                    }}
+                    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                  >
+                    Kaydet
+                  </button>
                 </div>
 
                 <div className="bg-blue-900/20 border border-blue-700/50 rounded-xl p-6">
                   <h3 className="font-semibold text-blue-300 mb-4 flex items-center">
                     <MessageSquare className="w-5 h-5 mr-2" />
-                    🔧 Replit API Kurulum Rehberi:
+                    🔧 Backend Kurulum Rehberi:
                   </h3>
                   <ol className="text-sm text-blue-200 space-y-2 list-decimal list-inside">
-                    <li>Replit'te Python projenizi açın</li>
-                    <li>Flask veya FastAPI ile API endpoint'i oluşturun</li>
-                    <li>POST isteği kabul eden /api/sms endpoint'i ekleyin</li>
-                    <li>JSON formatında phone, email, count, mode parametrelerini alın</li>
-                    <li>enough.py ve sms.py dosyalarınızı kullanın</li>
-                    <li>Replit URL'inizi yukarıdaki alana yapıştırın</li>
+                    <li>FastAPI ile API endpoint’leri oluşturun</li>
+                    <li>MySQL bağlantısı ekleyin</li>
+                    <li>/login, /send-sms, /get-api-url endpoint’lerini tanımlayın</li>
+                    <li>JWT ile yetkilendirme yapın</li>
+                    <li>URL’yi yukarıdaki alana girin</li>
                   </ol>
                 </div>
 
