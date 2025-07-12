@@ -56,6 +56,50 @@ function App() {
 
   const email = 'mehmetyilmaz24121@gmail.com';
 
+  // Kullanıcıları API'den çekme fonksiyonu
+  const fetchUsers = async () => {
+    if (!loginData.isAdmin || !loginData.token) return;
+    
+    try {
+      const res = await fetch(`${backendUrl}/admin/users`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`,
+        },
+      });
+      
+      if (!res.ok) {
+        console.error('Kullanıcılar çekilemedi:', res.status);
+        return;
+      }
+      
+      const data = await res.json();
+      // API'den gelen veriyi frontend formatına çevir
+      const formattedUsers: User[] = data.map((user: any) => ({
+        id: user.id || user.key,
+        key: user.key,
+        expiryDate: user.expiry_date || user.expiryDate,
+        createdAt: user.created_at || user.createdAt,
+        isActive: user.is_active !== false,
+        remainingDays: calculateRemainingDays(user.expiry_date || user.expiryDate),
+      }));
+      
+      setUsers(formattedUsers);
+    } catch (err) {
+      console.error('Kullanıcılar çekilirken hata:', err);
+    }
+  };
+
+  // Kalan gün hesaplama fonksiyonu
+  const calculateRemainingDays = (expiryDate: string): number => {
+    const expiry = new Date(expiryDate);
+    const today = new Date();
+    const diffTime = expiry.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  };
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
@@ -81,45 +125,26 @@ function App() {
 
     const savedHistory = localStorage.getItem('smsHistory');
     const savedLogin = localStorage.getItem('loginData');
-    const savedUsers = localStorage.getItem('users');
-    
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
     if (savedLogin) {
       const login = JSON.parse(savedLogin);
       setLoginData(login);
-      if (login.isLoggedIn) setActiveTab('send');
-    }
-
-    // Demo kullanıcılar ekle
-    if (!savedUsers) {
-      const demoUsers: User[] = [
-        {
-          id: '1',
-          key: 'user123',
-          expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-          isActive: true,
-          remainingDays: 30
-        },
-        {
-          id: '2',
-          key: 'testuser456',
-          expiryDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-          isActive: true,
-          remainingDays: 15
+      if (login.isLoggedIn) {
+        setActiveTab('send');
+        // Admin ise kullanıcıları çek
+        if (login.isAdmin) {
+          fetchUsers();
         }
-      ];
-      setUsers(demoUsers);
+      }
     }
   }, []);
 
+  // Kullanıcılar değiştiğinde localStorage'a kaydet (sadece cache amaçlı)
   useEffect(() => {
     localStorage.setItem('smsHistory', JSON.stringify(smsHistory));
     localStorage.setItem('loginData', JSON.stringify(loginData));
-    localStorage.setItem('users', JSON.stringify(users));
-  }, [smsHistory, loginData, users]);
+    // Kullanıcıları artık localStorage'a kaydetmiyoruz, sadece API'den çekiyoruz
+  }, [smsHistory, loginData]);
 
   useEffect(() => {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
@@ -130,23 +155,27 @@ function App() {
     const updateUserDays = () => {
       setUsers(prevUsers => 
         prevUsers.map(user => {
-          const expiryDate = new Date(user.expiryDate);
-          const today = new Date();
-          const diffTime = expiryDate.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const remainingDays = calculateRemainingDays(user.expiryDate);
           return {
             ...user,
-            remainingDays: Math.max(0, diffDays),
-            isActive: diffDays > 0
+            remainingDays,
+            isActive: remainingDays > 0
           };
         })
       );
     };
 
     updateUserDays();
-    const interval = setInterval(updateUserDays, 24 * 60 * 60 * 1000); // Her gün güncelle
+    const interval = setInterval(updateUserDays, 24 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Kullanıcılar sekmesine geçildiğinde kullanıcıları çek
+  useEffect(() => {
+    if (activeTab === 'users' && loginData.isAdmin && loginData.token) {
+      fetchUsers();
+    }
+  }, [activeTab, loginData.isAdmin, loginData.token]);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -156,7 +185,6 @@ function App() {
     const id = Date.now().toString();
     const newToast: Toast = { id, message, type };
     setToasts(prev => [...prev, newToast]);
-    
     setTimeout(() => {
       setToasts(prev => prev.filter(toast => toast.id !== id));
     }, 4000);
@@ -174,7 +202,7 @@ function App() {
     }
   };
 
-  const addUser = () => {
+  const addUser = async () => {
     if (!newUserKey.trim()) {
       showToast('Lütfen kullanıcı key\'i girin!', 'error');
       return;
@@ -185,25 +213,55 @@ function App() {
       return;
     }
 
-    const newUser: User = {
-      id: Date.now().toString(),
-      key: newUserKey.trim(),
-      expiryDate: new Date(Date.now() + newUserDays * 24 * 60 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-      isActive: true,
-      remainingDays: newUserDays
-    };
-
-    setUsers(prev => [...prev, newUser]);
-    setNewUserKey('');
-    setNewUserDays(30);
-    showToast('Kullanıcı başarıyla eklendi!', 'success');
+    try {
+      const res = await fetch(`${backendUrl}/admin/add-key`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`,
+        },
+        body: JSON.stringify({
+          key: newUserKey.trim(),
+          user_id: newUserKey.trim(),
+          expiry_days: newUserDays,
+          is_admin: false,
+        }),
+      });
+      
+      if (!res.ok) throw new Error(await res.text());
+      
+      // Kullanıcı eklendikten sonra listeyi yenile
+      await fetchUsers();
+      
+      setNewUserKey('');
+      setNewUserDays(30);
+      showToast('Kullanıcı başarıyla eklendi!', 'success');
+    } catch (err: any) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
   };
 
-  const deleteUser = (userId: string) => {
-    if (window.confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) {
-      setUsers(prev => prev.filter(user => user.id !== userId));
+  const deleteUser = async (userId: string) => {
+    if (!window.confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${backendUrl}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.token}`,
+        },
+      });
+      
+      if (!res.ok) throw new Error(await res.text());
+      
+      // Kullanıcı silindikten sonra listeyi yenile
+      await fetchUsers();
       showToast('Kullanıcı silindi', 'success');
+    } catch (err: any) {
+      showToast(`Hata: ${err.message}`, 'error');
     }
   };
 
@@ -214,26 +272,25 @@ function App() {
     }
 
     try {
-      // Admin kontrolü
-      if (key === 'admin123') {
-        setLoginData({ isLoggedIn: true, isAdmin: true, token: 'admin-token' });
-        setActiveTab('send');
-        setKey('');
-        showToast('Admin olarak giriş yapıldı', 'success');
-        return;
+      const res = await fetch(`${backendUrl}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('Key bulunamadı!');
+        throw new Error(await res.text());
       }
-
-      // Kullanıcı kontrolü
-      const user = users.find(u => u.key === key && u.isActive);
-      if (user) {
-        setLoginData({ isLoggedIn: true, isAdmin: false, token: 'user-token' });
-        setActiveTab('send');
-        setKey('');
-        showToast('Kullanıcı olarak giriş yapıldı', 'success');
-        return;
+      const data = await res.json();
+      setLoginData({ isLoggedIn: true, isAdmin: data.is_admin, token: data.access_token });
+      setActiveTab('send');
+      setKey('');
+      showToast('Başarıyla giriş yapıldı', 'success');
+      
+      // Admin ise kullanıcıları çek
+      if (data.is_admin) {
+        setTimeout(() => fetchUsers(), 1000); // Login işlemi tamamlandıktan sonra
       }
-
-      showToast('Geçersiz key veya süresi dolmuş!', 'error');
     } catch (err: any) {
       showToast(`Hata: ${err.message}`, 'error');
     }
@@ -243,6 +300,7 @@ function App() {
     setLoginData({ isLoggedIn: false, isAdmin: false });
     setActiveTab('login');
     setKey('');
+    setUsers([]); // Kullanıcıları temizle
     showToast('Çıkış yapıldı', 'info');
   };
 
@@ -342,13 +400,11 @@ function App() {
     }), { total: 0, sent: 0, failed: 0 });
   };
 
-  // SMS Sayfalama
   const totalPages = Math.ceil(smsHistory.length / logsPerPage);
   const startIndex = (currentPage - 1) * logsPerPage;
   const endIndex = startIndex + logsPerPage;
   const currentLogs = smsHistory.slice(startIndex, endIndex);
 
-  // Kullanıcı Sayfalama
   const totalUserPages = Math.ceil(users.length / usersPerPage);
   const userStartIndex = (currentUserPage - 1) * usersPerPage;
   const userEndIndex = userStartIndex + usersPerPage;
@@ -366,8 +422,8 @@ function App() {
   const adminTabs = [
     { id: 'send', label: 'SMS Gönder', icon: Send },
     { id: 'history', label: 'Geçmiş', icon: History },
-    { id: 'users', label: 'Kullanıcılar', icon: Users },
     { id: 'settings', label: 'Ayarlar', icon: Settings },
+    { id: 'users', label: 'Kullanıcılar', icon: Users },
   ];
   const availableTabs = loginData.isAdmin ? adminTabs : userTabs;
 
@@ -444,7 +500,6 @@ function App() {
 
   return (
     <div className={themeClasses}>
-      {/* Toast Bildirimleri */}
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map((toast) => (
           <div
@@ -473,7 +528,6 @@ function App() {
         ))}
       </div>
 
-      {/* Tema Değiştirici */}
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={toggleTheme}
@@ -500,7 +554,7 @@ function App() {
               { label: 'Toplam Gönderim', value: getTotalStats().total, icon: Target, color: isDarkMode ? 'blue-400' : 'blue-600' },
               { label: 'Başarılı', value: getTotalStats().sent, icon: CheckCircle, color: isDarkMode ? 'green-400' : 'green-600' },
               { label: 'Başarısız', value: getTotalStats().failed, icon: AlertCircle, color: isDarkMode ? 'red-400' : 'red-600' },
-              { label: 'Aktif Kullanıcı', value: users.filter(u => u.isActive).length, icon: Users, color: isDarkMode ? 'purple-400' : 'purple-600' },
+              { label: 'İşlem Sayısı', value: smsHistory.length, icon: BarChart3, color: isDarkMode ? 'purple-400' : 'purple-600' },
             ].map((stat, index) => (
               <div key={index} className={`${cardClasses} rounded-xl p-6`}>
                 <div className="flex items-center justify-between">
@@ -516,7 +570,7 @@ function App() {
         )}
 
         <div className="flex justify-center mb-8">
-          <div className={`${cardClasses} rounded-xl shadow-lg p-2 flex space-x-2 flex-wrap justify-center`}>
+          <div className={`${cardClasses} rounded-xl shadow-lg p-2 flex space-x-2`}>
             {availableTabs.map(tab => (
               <button
                 key={tab.id}
@@ -669,7 +723,7 @@ function App() {
               ) : (
                 <>
                   <div className="space-y-4">
-                    {currentLogs.map((sms) => (
+                    {currentLogs.map((sms, index) => (
                       <div key={sms.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center">
@@ -757,180 +811,6 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'users' && loginData.isAdmin && (
-            <div className={`${cardClasses} rounded-2xl shadow-2xl p-8`}>
-              <h2 className={`text-2xl font-bold mb-6 flex items-center justify-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                <Users className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                Kullanıcı Yönetimi
-              </h2>
-
-              {/* Kullanıcı Ekleme Formu */}
-              <div className={`rounded-xl p-6 mb-8 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                <h3 className={`text-lg font-semibold mb-4 flex items-center justify-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <UserPlus className={`w-5 h-5 mr-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} />
-                  Yeni Kullanıcı Ekle
-                </h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Kullanıcı Key
-                    </label>
-                    <div className="relative">
-                      <Key className={`absolute left-3 top-3 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                      <input
-                        type="text"
-                        value={newUserKey}
-                        onChange={(e) => setNewUserKey(e.target.value)}
-                        placeholder="user123"
-                        className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Süre (Gün)
-                    </label>
-                    <div className="relative">
-                      <Calendar className={`absolute left-3 top-3 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
-                      <input
-                        type="number"
-                        value={newUserDays}
-                        onChange={(e) => setNewUserDays(parseInt(e.target.value) || 30)}
-                        min="1"
-                        max="365"
-                        className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-end">
-                    <button
-                      onClick={addUser}
-                      className={`w-full ${buttonClasses} text-white py-3 rounded-lg font-medium transition-all duration-200 flex items-center justify-center`}
-                    >
-                      <UserPlus className="w-4 h-4 mr-2" />
-                      Ekle
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Kullanıcı Listesi */}
-              {users.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                  <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Henüz kullanıcı eklenmemiş</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-4">
-                    {currentUsers.map((user) => (
-                      <div key={user.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center">
-                            <div className={`w-3 h-3 rounded-full mr-3 ${user.isActive ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                            <span className={`font-medium text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.key}</span>
-                            <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
-                              user.isActive 
-                                ? 'bg-green-900/50 text-green-300' 
-                                : 'bg-red-900/50 text-red-300'
-                            }`}>
-                              {user.isActive ? 'Aktif' : 'Süresi Dolmuş'}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => deleteUser(user.id)}
-                            className={`p-2 rounded-lg transition-all duration-200 ${
-                              isDarkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-600 hover:bg-red-50'
-                            }`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-center">
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Oluşturulma</div>
-                            <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                              {new Date(user.createdAt).toLocaleDateString('tr-TR')}
-                            </div>
-                          </div>
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Bitiş Tarihi</div>
-                            <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                              {new Date(user.expiryDate).toLocaleDateString('tr-TR')}
-                            </div>
-                          </div>
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kalan Gün</div>
-                            <div className={`text-lg font-bold ${user.remainingDays > 7 ? 'text-green-400' : user.remainingDays > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                              {user.remainingDays}
-                            </div>
-                          </div>
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Durum</div>
-                            <div className={`text-sm font-medium ${user.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                              {user.isActive ? 'Aktif' : 'Pasif'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Kullanıcı Sayfalama */}
-                  {totalUserPages > 1 && (
-                    <div className="flex items-center justify-center mt-8 space-x-2">
-                      <button
-                        onClick={() => goToUserPage(currentUserPage - 1)}
-                        disabled={currentUserPage === 1}
-                        className={`p-2 rounded-lg transition-all duration-200 ${
-                          currentUserPage === 1
-                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
-                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                        }`}
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-
-                      {Array.from({ length: totalUserPages }, (_, i) => i + 1).map(page => (
-                        <button
-                          key={page}
-                          onClick={() => goToUserPage(page)}
-                          className={`px-3 py-2 rounded-lg transition-all duration-200 ${
-                            currentUserPage === page
-                              ? `${buttonClasses} text-white`
-                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
-
-                      <button
-                        onClick={() => goToUserPage(currentUserPage + 1)}
-                        disabled={currentUserPage === totalUserPages}
-                        className={`p-2 rounded-lg transition-all duration-200 ${
-                          currentUserPage === totalUserPages
-                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
-                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                        }`}
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Toplam {users.length} kullanıcı, Sayfa {currentUserPage} / {totalUserPages}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
           {activeTab === 'settings' && loginData.isAdmin && (
             <div className={`${cardClasses} rounded-2xl shadow-2xl p-8`}>
               <h2 className={`text-2xl font-bold mb-6 flex items-center justify-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1006,11 +886,190 @@ function App() {
                     <li>• Gerçek zamanlı durum takibi</li>
                     <li>• Detaylı istatistikler ve raporlama</li>
                     <li>• Güvenli login sistemi</li>
-                    <li>• Kullanıcı yönetim sistemi</li>
                     <li>• Sabit email: {email}</li>
                   </ul>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'users' && loginData.isAdmin && (
+            <div className={`${cardClasses} rounded-2xl shadow-2xl p-8`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-2xl font-bold flex items-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <Users className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                  Kullanıcı Yönetimi
+                </h2>
+                <button
+                  onClick={fetchUsers}
+                  className={`flex items-center px-4 py-2 rounded-lg transition-all duration-200 ${buttonClasses} text-white`}
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Yenile
+                </button>
+              </div>
+
+              <div className={`rounded-xl p-6 mb-8 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                <h3 className={`text-lg font-semibold mb-4 flex items-center justify-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <UserPlus className={`w-5 h-5 mr-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} />
+                  Yeni Kullanıcı Ekle
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Kullanıcı Key
+                    </label>
+                    <div className="relative">
+                      <Key className={`absolute left-3 top-3 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <input
+                        type="text"
+                        value={newUserKey}
+                        onChange={(e) => setNewUserKey(e.target.value)}
+                        placeholder="user123"
+                        className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Süre (Gün)
+                    </label>
+                    <div className="relative">
+                      <Calendar className={`absolute left-3 top-3 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <input
+                        type="number"
+                        value={newUserDays}
+                        onChange={(e) => setNewUserDays(parseInt(e.target.value) || 30)}
+                        min="1"
+                        max="365"
+                        className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-end">
+                    <button
+                      onClick={addUser}
+                      className={`w-full ${buttonClasses} text-white py-3 rounded-lg font-medium transition-all duration-200 flex items-center justify-center`}
+                    >
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Ekle
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {users.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                  <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Henüz kullanıcı eklenmemiş</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    {currentUsers.map((user) => (
+                      <div key={user.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center">
+                            <div className={`w-3 h-3 rounded-full mr-3 ${user.isActive ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                            <span className={`font-medium text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.key}</span>
+                            <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+                              user.isActive 
+                                ? 'bg-green-900/50 text-green-300' 
+                                : 'bg-red-900/50 text-red-300'
+                            }`}>
+                              {user.isActive ? 'Aktif' : 'Süresi Dolmuş'}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => deleteUser(user.id)}
+                            className={`p-2 rounded-lg transition-all duration-200 ${
+                              isDarkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-600 hover:bg-red-50'
+                            }`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-center">
+                          <div>
+                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Oluşturulma</div>
+                            <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {new Date(user.createdAt).toLocaleDateString('tr-TR')}
+                            </div>
+                          </div>
+                          <div>
+                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Bitiş Tarihi</div>
+                            <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {new Date(user.expiryDate).toLocaleDateString('tr-TR')}
+                            </div>
+                          </div>
+                          <div>
+                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kalan Gün</div>
+                            <div className={`text-lg font-bold ${user.remainingDays > 7 ? 'text-green-400' : user.remainingDays > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {user.remainingDays}
+                            </div>
+                          </div>
+                          <div>
+                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Durum</div>
+                            <div className={`text-sm font-medium ${user.isActive ? 'text-green-400' : 'text-red-400'}`}>
+                              {user.isActive ? 'Aktif' : 'Pasif'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {totalUserPages > 1 && (
+                    <div className="flex items-center justify-center mt-8 space-x-2">
+                      <button
+                        onClick={() => goToUserPage(currentUserPage - 1)}
+                        disabled={currentUserPage === 1}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          currentUserPage === 1
+                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
+                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                        }`}
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+
+                      {Array.from({ length: totalUserPages }, (_, i) => i + 1).map(page => (
+                        <button
+                          key={page}
+                          onClick={() => goToUserPage(page)}
+                          className={`px-3 py-2 rounded-lg transition-all duration-200 ${
+                            currentUserPage === page
+                              ? `${buttonClasses} text-white`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+
+                      <button
+                        onClick={() => goToUserPage(currentUserPage + 1)}
+                        disabled={currentUserPage === totalUserPages}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          currentUserPage === totalUserPages
+                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
+                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                        }`}
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Toplam {users.length} kullanıcı, Sayfa {currentUserPage} / {totalUserPages}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
