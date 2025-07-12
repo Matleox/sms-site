@@ -489,7 +489,7 @@ function App() {
               </button>
 
               <div className={`text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                <p>Demo: admin123 (Admin) | user123 (Kullanıcı)</p>
+                <p>Güvenli giriş için key'inizi girin</p>
               </div>
             </div>
           </div>
