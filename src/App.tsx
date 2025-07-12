@@ -702,6 +702,13 @@ function App() {
                   </div>
                 </div>
 
+                {/* Günlük Kullanım Hakkı */}
+                <div className="mb-4">
+                  <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20 text-center">
+                    <p className="text-blue-400 font-medium">Günlük Kullanım Hakkı: <span className="text-white">∞</span></p>
+                  </div>
+                </div>
+
                 <div className="text-center">
                   <button
                     onClick={sendSMS}
@@ -1164,7 +1171,7 @@ function App() {
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-center">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm text-center">
                           <div>
                             <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Oluşturulma</div>
                             <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1176,6 +1183,10 @@ function App() {
                             <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                               {new Date(user.expiryDate).toLocaleDateString('tr-TR')}
                             </div>
+                          </div>
+                          <div>
+                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kullanım Hakkı</div>
+                            <div className={`text-sm font-medium text-blue-400`}>∞</div>
                           </div>
                           <div>
                             <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kalan Gün</div>
