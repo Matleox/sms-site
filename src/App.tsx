@@ -21,6 +21,14 @@ interface User {
   remainingDays: number;
 }
 
+interface UserLog {
+  id: string;
+  userKey: string;
+  action: 'login' | 'logout';
+  ipAddress: string;
+  timestamp: string;
+}
+
 interface LoginData {
   isLoggedIn: boolean;
   isAdmin: boolean;
@@ -51,8 +59,13 @@ function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [newUserKey, setNewUserKey] = useState('');
   const [newUserDays, setNewUserDays] = useState(30);
+  const [newUserType, setNewUserType] = useState<'normal' | 'premium'>('normal');
+  const [historyTab, setHistoryTab] = useState<'sms' | 'user'>('sms');
+  const [userLogs, setUserLogs] = useState<UserLog[]>([]);
+  const [currentUserLogPage, setCurrentUserLogPage] = useState(1);
   const logsPerPage = 10;
   const usersPerPage = 10;
+  const userLogsPerPage = 10;
 
   const email = 'mehmetyilmaz24121@gmail.com';
 
@@ -199,6 +212,14 @@ function App() {
       setSmsHistory([]);
       setCurrentPage(1);
       showToast('SMS geçmişi temizlendi', 'success');
+    }
+  };
+
+  const clearUserLogs = () => {
+    if (window.confirm('Tüm kullanıcı loglarını silmek istediğinizden emin misiniz?')) {
+      setUserLogs([]);
+      setCurrentUserLogPage(1);
+      showToast('Kullanıcı logları temizlendi', 'success');
     }
   };
 
@@ -410,12 +431,21 @@ function App() {
   const userEndIndex = userStartIndex + usersPerPage;
   const currentUsers = users.slice(userStartIndex, userEndIndex);
 
+  const totalUserLogPages = Math.ceil(userLogs.length / userLogsPerPage);
+  const userLogStartIndex = (currentUserLogPage - 1) * userLogsPerPage;
+  const userLogEndIndex = userLogStartIndex + userLogsPerPage;
+  const currentUserLogs = userLogs.slice(userLogStartIndex, userLogEndIndex);
+
   const goToPage = (page: number) => {
     setCurrentPage(page);
   };
 
   const goToUserPage = (page: number) => {
     setCurrentUserPage(page);
+  };
+
+  const goToUserLogPage = (page: number) => {
+    setCurrentUserLogPage(page);
   };
 
   const userTabs = [{ id: 'send', label: 'SMS Gönder', icon: Send }];
@@ -428,7 +458,7 @@ function App() {
   const availableTabs = loginData.isAdmin ? adminTabs : userTabs;
 
   const themeClasses = isDarkMode 
-    ? 'min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 text-white'
+    ? 'min-h-screen bg-gradient-to-br from-black via-gray-900 to-gray-800 text-white'
     : 'min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 text-gray-900';
 
   const cardClasses = isDarkMode
@@ -698,115 +728,242 @@ function App() {
           {activeTab === 'history' && loginData.isAdmin && (
             <div className={`${cardClasses} rounded-2xl shadow-2xl p-8`}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className={`text-2xl font-bold flex items-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <History className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                  SMS Geçmişi
-                </h2>
-                {smsHistory.length > 0 && (
+                <div className="flex items-center space-x-4">
                   <button
-                    onClick={clearHistory}
+                    onClick={() => setHistoryTab('sms')}
                     className={`flex items-center px-4 py-2 rounded-lg transition-all duration-200 ${
-                      isDarkMode ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+                      historyTab === 'sms'
+                        ? `${buttonClasses} text-white`
+                        : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
                     }`}
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Temizle
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    SMS Geçmişi
                   </button>
-                )}
+                  <button
+                    onClick={() => setHistoryTab('user')}
+                    className={`flex items-center px-4 py-2 rounded-lg transition-all duration-200 ${
+                      historyTab === 'user'
+                        ? `${buttonClasses} text-white`
+                        : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                    }`}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    Kullanıcı Logları
+                  </button>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {historyTab === 'sms' && smsHistory.length > 0 && (
+                    <button
+                      onClick={clearHistory}
+                      className={`flex items-center px-4 py-2 rounded-lg transition-all duration-200 ${
+                        isDarkMode ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Temizle
+                    </button>
+                  )}
+                  {historyTab === 'user' && userLogs.length > 0 && (
+                    <button
+                      onClick={clearUserLogs}
+                      className={`flex items-center px-4 py-2 rounded-lg transition-all duration-200 ${
+                        isDarkMode ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Logları Temizle
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {smsHistory.length === 0 ? (
-                <div className="text-center py-12">
-                  <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                  <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Henüz SMS gönderilmemiş</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-4">
-                    {currentLogs.map((sms, index) => (
-                      <div key={sms.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center">
-                            {getStatusIcon(sms.status)}
-                            <span className={`ml-3 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sms.recipient}</span>
-                            <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
-                              sms.mode === 'turbo' 
-                                ? 'bg-purple-900/50 text-purple-300' 
-                                : 'bg-blue-900/50 text-blue-300'
-                            }`}>
-                              {sms.mode === 'turbo' ? 'Turbo' : 'Normal'}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{sms.timestamp}</div>
-                            <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{getStatusText(sms.status)}</div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4 text-sm text-center">
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Toplam</div>
-                            <div className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sms.count}</div>
-                          </div>
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Başarılı</div>
-                            <div className="text-lg font-bold text-green-400">{sms.successCount}</div>
-                          </div>
-                          <div>
-                            <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Başarısız</div>
-                            <div className="text-lg font-bold text-red-400">{sms.failedCount}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              {historyTab === 'sms' ? (
+                smsHistory.length === 0 ? (
+                  <div className="text-center py-12">
+                    <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                    <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Henüz SMS gönderilmemiş</p>
                   </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      {currentLogs.map((sms, index) => (
+                        <div key={sms.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center">
+                              {getStatusIcon(sms.status)}
+                              <span className={`ml-3 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sms.recipient}</span>
+                              <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+                                sms.mode === 'turbo' 
+                                  ? 'bg-purple-900/50 text-purple-300' 
+                                  : 'bg-blue-900/50 text-blue-300'
+                              }`}>
+                                {sms.mode === 'turbo' ? 'Turbo' : 'Normal'}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{sms.timestamp}</div>
+                              <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{getStatusText(sms.status)}</div>
+                            </div>
+                          </div>
 
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-center mt-8 space-x-2">
-                      <button
-                        onClick={() => goToPage(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        className={`p-2 rounded-lg transition-all duration-200 ${
-                          currentPage === 1
-                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
-                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                        }`}
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
+                          <div className="grid grid-cols-3 gap-4 text-sm text-center">
+                            <div>
+                              <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Toplam</div>
+                              <div className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{sms.count}</div>
+                            </div>
+                            <div>
+                              <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Başarılı</div>
+                              <div className="text-lg font-bold text-green-400">{sms.successCount}</div>
+                            </div>
+                            <div>
+                              <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Başarısız</div>
+                              <div className="text-lg font-bold text-red-400">{sms.failedCount}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
 
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-center mt-8 space-x-2">
                         <button
-                          key={page}
-                          onClick={() => goToPage(page)}
-                          className={`px-3 py-2 rounded-lg transition-all duration-200 ${
-                            currentPage === page
-                              ? `${buttonClasses} text-white`
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            currentPage === 1
+                              ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
                               : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
                           }`}
                         >
-                          {page}
+                          <ChevronLeft className="w-5 h-5" />
                         </button>
-                      ))}
 
-                      <button
-                        onClick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        className={`p-2 rounded-lg transition-all duration-200 ${
-                          currentPage === totalPages
-                            ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
-                            : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                        }`}
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                          <button
+                            key={page}
+                            onClick={() => goToPage(page)}
+                            className={`px-3 py-2 rounded-lg transition-all duration-200 ${
+                              currentPage === page
+                                ? `${buttonClasses} text-white`
+                                : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+
+                        <button
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            currentPage === totalPages
+                              ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Toplam {smsHistory.length} kayıt, Sayfa {currentPage} / {totalPages}
                     </div>
-                  )}
-
-                  <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Toplam {smsHistory.length} kayıt, Sayfa {currentPage} / {totalPages}
+                  </>
+                )
+              ) : (
+                // Kullanıcı Logları Sekmesi
+                userLogs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                    <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Henüz kullanıcı girişi kaydı yok</p>
                   </div>
-                </>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      {currentUserLogs.map((log, index) => (
+                        <div key={log.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center">
+                              <div className={`w-3 h-3 rounded-full mr-3 ${log.action === 'login' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                              <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{log.userKey}</span>
+                              <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+                                log.action === 'login' 
+                                  ? 'bg-green-900/50 text-green-300' 
+                                  : 'bg-red-900/50 text-red-300'
+                              }`}>
+                                {log.action === 'login' ? 'Giriş' : 'Çıkış'}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{log.timestamp}</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 text-sm text-center">
+                            <div>
+                              <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>IP Adresi</div>
+                              <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{log.ipAddress}</div>
+                            </div>
+                            <div>
+                              <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>İşlem</div>
+                              <div className={`text-sm font-medium ${log.action === 'login' ? 'text-green-400' : 'text-red-400'}`}>
+                                {log.action === 'login' ? 'Sisteme Giriş' : 'Sistemden Çıkış'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {totalUserLogPages > 1 && (
+                      <div className="flex items-center justify-center mt-8 space-x-2">
+                        <button
+                          onClick={() => goToUserLogPage(currentUserLogPage - 1)}
+                          disabled={currentUserLogPage === 1}
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            currentUserLogPage === 1
+                              ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+
+                        {Array.from({ length: totalUserLogPages }, (_, i) => i + 1).map(page => (
+                          <button
+                            key={page}
+                            onClick={() => goToUserLogPage(page)}
+                            className={`px-3 py-2 rounded-lg transition-all duration-200 ${
+                              currentUserLogPage === page
+                                ? `${buttonClasses} text-white`
+                                : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+
+                        <button
+                          onClick={() => goToUserLogPage(currentUserLogPage + 1)}
+                          disabled={currentUserLogPage === totalUserLogPages}
+                          className={`p-2 rounded-lg transition-all duration-200 ${
+                            currentUserLogPage === totalUserLogPages
+                              ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Toplam {userLogs.length} log kaydı, Sayfa {currentUserLogPage} / {totalUserLogPages}
+                    </div>
+                  </>
+                )
               )}
             </div>
           )}
@@ -915,7 +1072,7 @@ function App() {
                   Yeni Kullanıcı Ekle
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       Kullanıcı Key
@@ -930,6 +1087,20 @@ function App() {
                         className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
                       />
                     </div>
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Kullanıcı Türü
+                    </label>
+                    <select
+                      value={newUserType}
+                      onChange={(e) => setNewUserType(e.target.value as 'normal' | 'premium')}
+                      className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="premium">Premium</option>
+                    </select>
                   </div>
                   
                   <div>
