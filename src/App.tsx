@@ -15,10 +15,14 @@ interface SMSData {
 interface User {
   id: string;
   key: string;
+  tag: string;
   expiryDate: string;
   createdAt: string;
   isActive: boolean;
   remainingDays: number;
+  userType: 'normal' | 'premium' | 'admin';
+  dailyLimit: number;
+  dailyUsed: number;
 }
 
 interface UserLog {
@@ -33,6 +37,9 @@ interface LoginData {
   isLoggedIn: boolean;
   isAdmin: boolean;
   token?: string;
+  dailyLimit: number;
+  dailyUsed: number;
+  userType: 'normal' | 'premium' | 'admin';
 }
 
 interface Toast {
@@ -48,7 +55,13 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [backendUrl, setBackendUrl] = useState('https://sms-api-qb7q.onrender.com');
   const [apiUrl, setApiUrl] = useState('');
-  const [loginData, setLoginData] = useState<LoginData>({ isLoggedIn: false, isAdmin: false });
+  const [loginData, setLoginData] = useState<LoginData>({ 
+    isLoggedIn: false, 
+    isAdmin: false, 
+    dailyLimit: 500,
+    dailyUsed: 0,
+    userType: 'normal'
+  });
   const [key, setKey] = useState('');
   const [phone, setPhone] = useState('');
   const [count, setCount] = useState(0);
@@ -58,6 +71,7 @@ function App() {
   const [currentUserPage, setCurrentUserPage] = useState(1);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [newUserKey, setNewUserKey] = useState('');
+  const [newUserTag, setNewUserTag] = useState('');
   const [newUserDays, setNewUserDays] = useState(30);
   const [newUserType, setNewUserType] = useState<'normal' | 'premium'>('normal');
   const [historyTab, setHistoryTab] = useState<'sms' | 'user'>('sms');
@@ -89,14 +103,23 @@ function App() {
       
       const data = await res.json();
       // API'den gelen veriyi frontend formatına çevir
-      const formattedUsers: User[] = data.map((user: any) => ({
-        id: user.id || user.key,
-        key: user.key,
-        expiryDate: user.expiry_date || user.expiryDate,
-        createdAt: user.created_at || user.createdAt,
-        isActive: user.is_active !== false,
-        remainingDays: calculateRemainingDays(user.expiry_date || user.expiryDate),
-      }));
+      const formattedUsers: User[] = data.map((user: any) => {
+        const isAdmin = user.is_admin || user.isAdmin || false;
+        const userType = isAdmin ? 'admin' : (user.user_type || user.userType || 'normal');
+        
+        return {
+          id: user.id || user.key,
+          key: user.key,
+          tag: user.user_id || user.tag || user.key,
+          expiryDate: user.expiry_date || user.expiryDate,
+          createdAt: user.created_at || user.createdAt,
+          isActive: user.is_active !== false,
+          remainingDays: calculateRemainingDays(user.expiry_date || user.expiryDate),
+          userType: userType,
+          dailyLimit: isAdmin ? 0 : (user.daily_limit || user.dailyLimit || 500),
+          dailyUsed: isAdmin ? 0 : (user.daily_used || user.dailyUsed || 0),
+        };
+      });
       
       setUsers(formattedUsers);
     } catch (err) {
@@ -141,7 +164,14 @@ function App() {
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
     if (savedLogin) {
       const login = JSON.parse(savedLogin);
-      setLoginData(login);
+      // Eski veri formatını yeni formata çevir
+      const updatedLogin = {
+        ...login,
+        userType: login.userType || (login.isAdmin ? 'admin' : 'normal'),
+        dailyLimit: login.dailyLimit || (login.isAdmin ? 0 : 500),
+        dailyUsed: login.dailyUsed || 0
+      };
+      setLoginData(updatedLogin);
       if (login.isLoggedIn) {
         setActiveTab('send');
         // Admin ise kullanıcıları çek
@@ -243,9 +273,10 @@ function App() {
         },
         body: JSON.stringify({
           key: newUserKey.trim(),
-          user_id: newUserKey.trim(),
+          user_id: newUserTag.trim() || newUserKey.trim(),
           expiry_days: newUserDays,
           is_admin: false,
+          user_type: newUserType,
         }),
       });
       
@@ -255,6 +286,7 @@ function App() {
       await fetchUsers();
       
       setNewUserKey('');
+      setNewUserTag('');
       setNewUserDays(30);
       showToast('Kullanıcı başarıyla eklendi!', 'success');
     } catch (err: any) {
@@ -303,7 +335,17 @@ function App() {
         throw new Error(await res.text());
       }
       const data = await res.json();
-      setLoginData({ isLoggedIn: true, isAdmin: data.is_admin, token: data.access_token });
+      const userType = data.is_admin ? 'admin' : (data.user_type || 'normal');
+      const dailyLimit = data.is_admin ? 0 : (data.user_type === 'premium' ? 0 : 500);
+      
+      setLoginData({ 
+        isLoggedIn: true, 
+        isAdmin: data.is_admin, 
+        token: data.access_token,
+        dailyLimit: dailyLimit,
+        dailyUsed: data.daily_used || 0,
+        userType: userType
+      });
       setActiveTab('send');
       setKey('');
       showToast('Başarıyla giriş yapıldı', 'success');
@@ -318,7 +360,13 @@ function App() {
   };
 
   const handleLogout = () => {
-    setLoginData({ isLoggedIn: false, isAdmin: false });
+    setLoginData({ 
+      isLoggedIn: false, 
+      isAdmin: false, 
+      dailyLimit: 500,
+      dailyUsed: 0,
+      userType: 'normal'
+    });
     setActiveTab('login');
     setKey('');
     setUsers([]); // Kullanıcıları temizle
@@ -703,10 +751,13 @@ function App() {
                 </div>
 
                 {/* Günlük Kullanım Hakkı */}
-                <div className="mb-4">
-                  <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20 text-center">
-                    <p className="text-blue-400 font-medium">Günlük Kullanım Hakkı: <span className="text-white">∞</span></p>
-                  </div>
+                <div className="mb-4 text-center">
+                  <p className="text-blue-400 font-medium">
+                    Günlük Kullanım Hakkı: 
+                    <span className="text-white">
+                      {loginData.userType === 'admin' || loginData.userType === 'premium' ? ' ∞' : ` ${loginData.dailyLimit - loginData.dailyUsed}`}
+                    </span>
+                  </p>
                 </div>
 
                 <div className="text-center">
@@ -1079,7 +1130,7 @@ function App() {
                   Yeni Kullanıcı Ekle
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div>
                     <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       Kullanıcı Key
@@ -1091,6 +1142,22 @@ function App() {
                         value={newUserKey}
                         onChange={(e) => setNewUserKey(e.target.value)}
                         placeholder="user123"
+                        className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Kullanıcı Tag
+                    </label>
+                    <div className="relative">
+                      <Users className={`absolute left-3 top-3 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <input
+                        type="text"
+                        value={newUserTag}
+                        onChange={(e) => setNewUserTag(e.target.value)}
+                        placeholder="Ahmet"
                         className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
                       />
                     </div>
@@ -1151,14 +1218,19 @@ function App() {
                       <div key={user.id} className={`rounded-xl p-6 border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center">
-                            <div className={`w-3 h-3 rounded-full mr-3 ${user.isActive ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                            <span className={`font-medium text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.key}</span>
+                            <div className={`w-3 h-3 rounded-full mr-3 ${user.remainingDays > 0 ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                            <div className="flex flex-col">
+                              <span className={`font-medium text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.tag}</span>
+                              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Key: {user.key}</span>
+                            </div>
                             <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
-                              user.isActive 
-                                ? 'bg-green-900/50 text-green-300' 
-                                : 'bg-red-900/50 text-red-300'
+                              user.userType === 'admin' 
+                                ? 'bg-red-900/50 text-red-300'
+                                : user.userType === 'premium'
+                                ? 'bg-green-900/50 text-green-300'
+                                : 'bg-gray-900/50 text-gray-300'
                             }`}>
-                              {user.isActive ? 'Aktif' : 'Süresi Dolmuş'}
+                              {user.userType === 'admin' ? 'Admin' : user.userType === 'premium' ? 'Premium' : 'Normal'}
                             </span>
                           </div>
                           <button
@@ -1186,7 +1258,9 @@ function App() {
                           </div>
                           <div>
                             <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kullanım Hakkı</div>
-                            <div className={`text-sm font-medium text-blue-400`}>∞</div>
+                            <div className={`text-sm font-medium text-blue-400`}>
+                              {user.userType === 'premium' || user.userType === 'admin' ? '∞' : `${user.dailyLimit - user.dailyUsed}`}
+                            </div>
                           </div>
                           <div>
                             <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Kalan Gün</div>
@@ -1196,8 +1270,8 @@ function App() {
                           </div>
                           <div>
                             <div className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Durum</div>
-                            <div className={`text-sm font-medium ${user.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                              {user.isActive ? 'Aktif' : 'Pasif'}
+                            <div className={`text-sm font-medium ${user.remainingDays > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {user.remainingDays > 0 ? 'Aktif' : 'Pasif'}
                             </div>
                           </div>
                         </div>
