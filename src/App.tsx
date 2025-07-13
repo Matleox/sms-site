@@ -71,6 +71,7 @@ function App() {
   const [currentUserPage, setCurrentUserPage] = useState(1);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [newUserKey, setNewUserKey] = useState('');
   const [newUserTag, setNewUserTag] = useState('');
   const [newUserDays, setNewUserDays] = useState(30);
@@ -325,39 +326,46 @@ function App() {
       return;
     }
 
-    try {
-      const res = await fetch(`${backendUrl}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
-      });
-      if (!res.ok) {
-        if (res.status === 404) throw new Error('Key bulunamadı!');
-        throw new Error(await res.text());
+    setIsLoggingIn(true);
+    
+    // Simüle loading süresi
+    setTimeout(async () => {
+      try {
+        const res = await fetch(`${backendUrl}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        if (!res.ok) {
+          if (res.status === 404) throw new Error('Key bulunamadı!');
+          throw new Error(await res.text());
+        }
+        const data = await res.json();
+        const userType = data.is_admin ? 'admin' : (data.user_type || 'normal');
+        const dailyLimit = data.is_admin ? 0 : (data.user_type === 'premium' ? 0 : 500);
+        
+        setLoginData({ 
+          isLoggedIn: true, 
+          isAdmin: data.is_admin, 
+          token: data.access_token,
+          dailyLimit: dailyLimit,
+          dailyUsed: data.daily_used || 0,
+          userType: userType
+        });
+        setActiveTab('send');
+        setKey('');
+        showToast('Başarıyla giriş yapıldı', 'success');
+        
+        // Admin ise kullanıcıları çek
+        if (data.is_admin) {
+          setTimeout(() => fetchUsers(), 1000); // Login işlemi tamamlandıktan sonra
+        }
+      } catch (err: any) {
+        showToast(`Hata: ${err.message}`, 'error');
+      } finally {
+        setIsLoggingIn(false);
       }
-      const data = await res.json();
-      const userType = data.is_admin ? 'admin' : (data.user_type || 'normal');
-      const dailyLimit = data.is_admin ? 0 : (data.user_type === 'premium' ? 0 : 500);
-      
-      setLoginData({ 
-        isLoggedIn: true, 
-        isAdmin: data.is_admin, 
-        token: data.access_token,
-        dailyLimit: dailyLimit,
-        dailyUsed: data.daily_used || 0,
-        userType: userType
-      });
-      setActiveTab('send');
-      setKey('');
-      showToast('Başarıyla giriş yapıldı', 'success');
-      
-      // Admin ise kullanıcıları çek
-      if (data.is_admin) {
-        setTimeout(() => fetchUsers(), 1000); // Login işlemi tamamlandıktan sonra
-      }
-    } catch (err: any) {
-      showToast(`Hata: ${err.message}`, 'error');
-    }
+    }, 1500); // 1.5 saniye loading
   };
 
   const handleLogout = () => {
@@ -570,10 +578,21 @@ function App() {
 
               <button
                 onClick={handleLogin}
-                className={`w-full text-white py-3 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${buttonClasses}`}
+                disabled={isLoggingIn}
+                className={`w-full font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                  isLoggingIn 
+                    ? 'bg-blue-500 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white`}
               >
-                <Shield className="w-4 h-4 mr-2" />
-                Giriş Yap
+                {isLoggingIn ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Giriş Yapılıyor...
+                  </>
+                ) : (
+                  'Giriş Yap'
+                )}
               </button>
 
               <div className={`text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
