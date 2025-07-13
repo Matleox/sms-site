@@ -374,7 +374,6 @@ function App() {
     // Çıkış bildirimi göster
     setNotification({
       message: 'Başarıyla çıkış yapıldı!',
-      type: 'success'
     });
       isAdmin: false, 
       dailyLimit: 500,
