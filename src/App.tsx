@@ -70,6 +70,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [currentUserPage, setCurrentUserPage] = useState(1);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
   const [newUserKey, setNewUserKey] = useState('');
   const [newUserTag, setNewUserTag] = useState('');
   const [newUserDays, setNewUserDays] = useState(30);
