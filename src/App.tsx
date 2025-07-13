@@ -371,6 +371,11 @@ function App() {
   const handleLogout = () => {
     setLoginData({ 
       isLoggedIn: false, 
+    // Çıkış bildirimi göster
+    setNotification({
+      message: 'Başarıyla çıkış yapıldı!',
+      type: 'success'
+    });
       isAdmin: false, 
       dailyLimit: 500,
       dailyUsed: 0,
