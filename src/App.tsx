@@ -376,8 +376,8 @@ function App() {
       message: 'Başarıyla çıkış yapıldı!',
       type: 'success'
     });
-    
-    setIsAdmin(false);
+      isAdmin: false, 
+      dailyLimit: 500,
       dailyUsed: 0,
       userType: 'normal'
     });
