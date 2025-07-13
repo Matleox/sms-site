@@ -528,17 +528,17 @@ function App() {
 
   const buttonClasses = isDarkMode
     ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-    : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600';
-
-  if (!loginData.isLoggedIn) {
-    return (
-      <div className={themeClasses}>
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            onClick={toggleTheme}
-            className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
+            {isLoggingIn ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Giriş Yapılıyor...
+              </>
+            ) : (
+              <>
+                <LogIn className="w-5 h-5" />
+                Giriş Yap
+              </>
+            )}
           </button>
         </div>
 
