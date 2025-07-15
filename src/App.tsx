@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send, History, Settings, MessageSquare, Phone, CheckCircle, AlertCircle, Clock, Shield, LogOut, Zap, Target, BarChart3, Activity, Moon, Sun, Trash2, ChevronLeft, ChevronRight, X, Users, UserPlus, Calendar, Key, Eye, EyeOff } from 'lucide-react';
 
 interface SMSData {
@@ -48,6 +48,12 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
+declare global {
+  interface Window {
+    grecaptcha: any;
+  }
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [smsHistory, setSmsHistory] = useState<SMSData[]>([]);
@@ -79,11 +85,67 @@ function App() {
   const [historyTab, setHistoryTab] = useState<'sms' | 'user'>('sms');
   const [userLogs, setUserLogs] = useState<UserLog[]>([]);
   const [currentUserLogPage, setCurrentUserLogPage] = useState(1);
+  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState('');
+  const [recaptchaResponse, setRecaptchaResponse] = useState('');
+  const [recaptchaSecretKey, setRecaptchaSecretKey] = useState('');
+  const [showLogoutWarning, setShowLogoutWarning] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(300); // 5 dakika
   const logsPerPage = 10;
   const usersPerPage = 10;
   const userLogsPerPage = 10;
+  const recaptchaWidgetId = useRef<number | null>(null);
+  const logoutTimerRef = useRef<number | null>(null);
+  const warningTimerRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
 
   const email = 'mehmetyilmaz24121@gmail.com';
+
+  // Otomatik logout fonksiyonları
+  const resetLogoutTimer = () => {
+    // Mevcut timer'ları temizle
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+    }
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+
+    // Uyarı ve countdown'ı sıfırla
+    setShowLogoutWarning(false);
+    setLogoutCountdown(300); // 5 dakika
+
+    // Yeni timer'ları başlat
+    if (loginData.isLoggedIn) {
+      // 25 dakika sonra uyarı göster
+      warningTimerRef.current = window.setTimeout(() => {
+        setShowLogoutWarning(true);
+        // 5 dakika countdown başlat
+        countdownTimerRef.current = window.setInterval(() => {
+          setLogoutCountdown(prev => {
+            if (prev <= 1) {
+              handleLogout();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }, 25 * 60 * 1000); // 25 dakika
+
+      // 30 dakika sonra logout
+      logoutTimerRef.current = window.setTimeout(() => {
+        handleLogout();
+      }, 30 * 60 * 1000); // 30 dakika
+    }
+  };
+
+  const handleUserActivity = () => {
+    if (loginData.isLoggedIn) {
+      resetLogoutTimer();
+    }
+  };
 
   // Kullanıcıları API'den çekme fonksiyonu
   const fetchUsers = async () => {
@@ -161,6 +223,15 @@ function App() {
       .then(data => setApiUrl(data.api_url || ''))
       .catch(err => console.error('API URL alınamadı:', err));
 
+    // reCAPTCHA site key'ini yükle
+    fetch(`${backendUrl}/get-recaptcha-site-key`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(res => res.json())
+      .then(data => setRecaptchaSiteKey(data.site_key || ''))
+      .catch(err => console.error('reCAPTCHA site key alınamadı:', err));
+
     const savedHistory = localStorage.getItem('smsHistory');
     const savedLogin = localStorage.getItem('loginData');
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
@@ -183,6 +254,64 @@ function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    // reCAPTCHA widget'ını render et
+    if (recaptchaSiteKey && window.grecaptcha && !loginData.isLoggedIn) {
+      // Container'ı temizle
+      const container = document.getElementById('recaptcha-container');
+      if (container) {
+        container.innerHTML = '';
+      }
+      
+      // Widget ID'yi sıfırla
+      recaptchaWidgetId.current = null;
+      
+      // Yeni widget oluştur
+      setTimeout(() => {
+        if (window.grecaptcha && recaptchaSiteKey) {
+          recaptchaWidgetId.current = window.grecaptcha.render('recaptcha-container', {
+            sitekey: recaptchaSiteKey,
+            callback: (response: string) => setRecaptchaResponse(response),
+            'expired-callback': () => setRecaptchaResponse('')
+          });
+        }
+      }, 100); // Küçük bir gecikme ile
+    }
+  }, [recaptchaSiteKey, loginData.isLoggedIn]); // loginData.isLoggedIn değişince tetikle
+
+  // Otomatik logout için event listener'ları
+  useEffect(() => {
+    if (loginData.isLoggedIn) {
+      // Timer'ı başlat
+      resetLogoutTimer();
+
+      // Event listener'ları ekle
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+      
+      events.forEach(event => {
+        document.addEventListener(event, handleUserActivity, true);
+      });
+
+      // Cleanup function
+      return () => {
+        events.forEach(event => {
+          document.removeEventListener(event, handleUserActivity, true);
+        });
+        
+        // Timer'ları temizle
+        if (logoutTimerRef.current) {
+          clearTimeout(logoutTimerRef.current);
+        }
+        if (warningTimerRef.current) {
+          clearTimeout(warningTimerRef.current);
+        }
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+        }
+      };
+    }
+  }, [loginData.isLoggedIn]);
 
   // Kullanıcılar değiştiğinde localStorage'a kaydet (sadece cache amaçlı)
   useEffect(() => {
@@ -326,6 +455,12 @@ function App() {
       return;
     }
 
+    // reCAPTCHA kontrolü (eğer site key varsa)
+    if (recaptchaSiteKey && !recaptchaResponse) {
+      showToast('Lütfen reCAPTCHA\'yı tamamlayın!', 'error');
+      return;
+    }
+
     setIsLoggingIn(true);
     
     // Simüle loading süresi
@@ -334,11 +469,48 @@ function App() {
         const res = await fetch(`${backendUrl}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key }),
+          body: JSON.stringify({ 
+            key,
+            recaptcha_response: recaptchaResponse 
+          }),
         });
         if (!res.ok) {
-          if (res.status === 404) throw new Error('Key bulunamadı!');
-          throw new Error(await res.text());
+          const errorText = await res.text();
+          
+          if (res.status === 404) {
+            showToast('Key bulunamadı!', 'error');
+            return;
+          }
+          
+          if (res.status === 400) {
+            if (errorText.includes('reCAPTCHA')) {
+              showToast('reCAPTCHA doğrulaması başarısız!', 'error');
+              return;
+            }
+            if (errorText.includes('Geçersiz key')) {
+              showToast('Hatalı Key!', 'error');
+              return;
+            }
+            if (errorText.includes('süresi dolmuş')) {
+              showToast('Süresi Dolmuş Key!', 'error');
+              return;
+            }
+            throw new Error(errorText);
+          }
+          
+          if (res.status === 401) {
+            if (errorText.includes('Geçersiz key')) {
+              showToast('Hatalı Key!', 'error');
+              return;
+            }
+            if (errorText.includes('süresi dolmuş')) {
+              showToast('Süresi Dolmuş Key!', 'error');
+              return;
+            }
+            throw new Error(errorText);
+          }
+          
+          throw new Error(errorText);
         }
         const data = await res.json();
         const userType = data.is_admin ? 'admin' : (data.user_type || 'normal');
@@ -354,6 +526,7 @@ function App() {
         });
         setActiveTab('send');
         setKey('');
+        setRecaptchaResponse(''); // reCAPTCHA'yı sıfırla
         showToast('Başarıyla giriş yapıldı', 'success');
         
         // Admin ise kullanıcıları çek
@@ -369,6 +542,27 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Timer'ları temizle
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+    }
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+
+    // reCAPTCHA'yı tamamen temizle
+    if (recaptchaWidgetId.current && window.grecaptcha) {
+      try {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+      } catch (e) {
+        console.log('reCAPTCHA reset hatası:', e);
+      }
+    }
+    recaptchaWidgetId.current = null; // Widget ID'yi sıfırla
+
     setLoginData({ 
       isLoggedIn: false, 
       isAdmin: false, 
@@ -378,8 +572,11 @@ function App() {
     });
     setActiveTab('login');
     setKey('');
+    setRecaptchaResponse(''); // reCAPTCHA response'u temizle
     setUsers([]); // Kullanıcıları temizle
-    showToast('Çıkış yapıldı', 'info');
+    setShowLogoutWarning(false); // Uyarı modal'ını kapat
+    setLogoutCountdown(30); // Countdown'ı sıfırla
+    showToast('Başarıyla çıkış yapıldı', 'error');
   };
 
   const sendSMS = async () => {
@@ -533,6 +730,34 @@ function App() {
   if (!loginData.isLoggedIn) {
     return (
       <div className={themeClasses}>
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
+                toast.type === 'success'
+                  ? 'bg-green-500/90 border-green-400 text-white'
+                  : toast.type === 'error'
+                  ? 'bg-red-500/90 border-red-400 text-white'
+                  : 'bg-blue-500/90 border-blue-400 text-white'
+              }`}
+            >
+              <div className="flex items-center">
+                {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
+                <span className="text-sm font-medium">{toast.message}</span>
+              </div>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
         <div className="absolute top-4 right-4 z-10">
           <button
             onClick={toggleTheme}
@@ -575,6 +800,13 @@ function App() {
                   </button>
                 </div>
               </div>
+
+              {/* reCAPTCHA */}
+              {recaptchaSiteKey && (
+                <div className="flex justify-center">
+                  <div id="recaptcha-container"></div>
+                </div>
+              )}
 
               <button
                 onClick={handleLogin}
@@ -634,6 +866,42 @@ function App() {
           </div>
         ))}
       </div>
+
+      {/* Otomatik Logout Uyarısı */}
+      {showLogoutWarning && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className={`${cardClasses} rounded-2xl shadow-2xl p-8 max-w-md mx-4`}>
+            <div className="text-center">
+              <AlertCircle className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`} />
+              <h3 className={`text-xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Oturum Süresi Doluyor
+              </h3>
+              <p className={`mb-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {Math.floor(logoutCountdown / 60)}:{(logoutCountdown % 60).toString().padStart(2, '0')} dakika sonra otomatik olarak çıkış yapılacaksınız.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => {
+                    setShowLogoutWarning(false);
+                    resetLogoutTimer();
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-lg ${buttonClasses} text-white`}
+                >
+                  Devam Et
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className={`flex-1 px-4 py-2 rounded-lg ${
+                    isDarkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'
+                  } text-white`}
+                >
+                  Çıkış Yap
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="absolute top-4 right-4 z-10">
         <button
@@ -1065,15 +1333,18 @@ function App() {
               <div className="max-w-2xl mx-auto space-y-8">
                 <div className="text-center">
                   <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Backend URL
+                    Backend URL (Salt Okunur)
                   </label>
                   <input
                     type="url"
                     value={backendUrl}
-                    onChange={(e) => setBackendUrl(e.target.value)}
+                    disabled
                     placeholder="https://sms-api-qb7q.onrender.com"
-                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses} opacity-50 cursor-not-allowed`}
                   />
+                  <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Backend URL'yi değiştirmek için .env dosyasını manuel olarak düzenleyin
+                  </p>
                 </div>
 
                 <div className="text-center">
@@ -1099,6 +1370,66 @@ function App() {
                       });
                       if (res.ok) showToast('API URL kaydedildi!', 'success');
                       else showToast('Kaydetme başarısız!', 'error');
+                    }}
+                    className={`mt-2 px-4 py-2 rounded-lg ${buttonClasses} text-white`}
+                  >
+                    Kaydet
+                  </button>
+                </div>
+
+                <div className="text-center">
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    reCAPTCHA Site Key
+                  </label>
+                  <input
+                    type="text"
+                    value={recaptchaSiteKey}
+                    onChange={(e) => setRecaptchaSiteKey(e.target.value)}
+                    placeholder="6Lxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                </div>
+
+                <div className="text-center">
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    reCAPTCHA Secret Key
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={recaptchaSecretKey}
+                      onChange={(e) => setRecaptchaSecretKey(e.target.value)}
+                      placeholder="6Lxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      className={`w-full px-4 py-3 pr-12 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const res = await fetch(`${backendUrl}/admin/set-recaptcha-keys`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${loginData.token}`,
+                        },
+                        body: JSON.stringify({ 
+                          site_key: recaptchaSiteKey,
+                          secret_key: recaptchaSecretKey 
+                        }),
+                      });
+                      if (res.ok) {
+                        showToast('reCAPTCHA anahtarları kaydedildi!', 'success');
+                        // Sayfayı yenile
+                        window.location.reload();
+                      } else {
+                        showToast('Kaydetme başarısız!', 'error');
+                      }
                     }}
                     className={`mt-2 px-4 py-2 rounded-lg ${buttonClasses} text-white`}
                   >
