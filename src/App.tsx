@@ -976,4 +976,82 @@ function App() {
   // 2FA doğrulama ekranı
   if (pendingLogin) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-gray-800 text-white">
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
+                toast.type === 'success'
+                  ? 'bg-green-500/90 border-green-400 text-white'
+                  : toast.type === 'error'
+                  ? 'bg-red-500/90 border-red-400 text-white'
+                  : 'bg-blue-500/90 border-blue-400 text-white'
+              }`}
+            >
+              <div className="flex items-center">
+                {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
+                <span className="text-sm font-medium">{toast.message}</span>
+              </div>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="bg-gray-800/50 backdrop-blur-lg border border-gray-700 rounded-2xl shadow-2xl p-8 w-full max-w-md">
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center mb-4">
+                <Shield className="w-12 h-12 mr-3 text-blue-400" />
+                <h1 className="text-3xl font-bold text-white">2FA Doğrulama</h1>
+              </div>
+              <p className="text-gray-300">6 haneli doğrulama kodunu girin</p>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-center text-gray-300">
+                  Doğrulama Kodu
+                </label>
+                <input
+                  type="text"
+                  value={twoFACode}
+                  onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyPress={(e) => e.key === 'Enter' && handleTwoFALogin()}
+                  placeholder="000000"
+                  className="w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 text-center text-2xl tracking-widest"
+                  maxLength={6}
+                />
+              </div>
+
+              <button
+                onClick={handleTwoFALogin}
+                className="w-full font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+              >
+                Doğrula
+              </button>
+
+              <button
+                onClick={() => {
+                  setPendingLogin(false);
+                  setTempToken('');
+                  setTwoFACode('');
+                  setKey('');
+                }}
+                className="w-full font-medium py-2 px-4 rounded-lg transition-all duration-200 text-gray-400 hover:text-white"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
