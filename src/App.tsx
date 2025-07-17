@@ -48,8 +48,6 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
-
-
 function App() {
   const [activeTab, setActiveTab] = useState('login');
   const [smsHistory, setSmsHistory] = useState<SMSData[]>([]);
@@ -82,13 +80,16 @@ function App() {
   const [userLogs, setUserLogs] = useState<UserLog[]>([]);
   const [currentUserLogPage, setCurrentUserLogPage] = useState(1);
   const [showLogoutWarning, setShowLogoutWarning] = useState(false);
-  const [logoutCountdown, setLogoutCountdown] = useState(300); // 5 dakika
+  const [logoutCountdown, setLogoutCountdown] = useState(300);
+  
+  // 2FA States
   const [twoFAEnabled, setTwoFAEnabled] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [twoFACode, setTwoFACode] = useState('');
   const [showTwoFASetup, setShowTwoFASetup] = useState(false);
   const [pendingLogin, setPendingLogin] = useState(false);
   const [tempToken, setTempToken] = useState('');
+  
   const logsPerPage = 10;
   const usersPerPage = 10;
   const userLogsPerPage = 10;
@@ -100,7 +101,6 @@ function App() {
 
   // Otomatik logout fonksiyonları
   const resetLogoutTimer = () => {
-    // Mevcut timer'ları temizle
     if (logoutTimerRef.current) {
       clearTimeout(logoutTimerRef.current);
     }
@@ -111,16 +111,12 @@ function App() {
       clearInterval(countdownTimerRef.current);
     }
 
-    // Uyarı ve countdown'ı sıfırla
     setShowLogoutWarning(false);
-    setLogoutCountdown(300); // 5 dakika
+    setLogoutCountdown(300);
 
-    // Yeni timer'ları başlat
     if (loginData.isLoggedIn) {
-      // 25 dakika sonra uyarı göster
       warningTimerRef.current = window.setTimeout(() => {
         setShowLogoutWarning(true);
-        // 5 dakika countdown başlat
         countdownTimerRef.current = window.setInterval(() => {
           setLogoutCountdown(prev => {
             if (prev <= 1) {
@@ -130,12 +126,11 @@ function App() {
             return prev - 1;
           });
         }, 1000);
-      }, 25 * 60 * 1000); // 25 dakika
+      }, 25 * 60 * 1000);
 
-      // 30 dakika sonra logout
       logoutTimerRef.current = window.setTimeout(() => {
         handleLogout();
-      }, 30 * 60 * 1000); // 30 dakika
+      }, 30 * 60 * 1000);
     }
   };
 
@@ -145,7 +140,6 @@ function App() {
     }
   };
 
-  // Kullanıcıları API'den çekme fonksiyonu
   const fetchUsers = async () => {
     if (!loginData.isAdmin || !loginData.token) return;
     
@@ -164,7 +158,6 @@ function App() {
       }
       
       const data = await res.json();
-      // API'den gelen veriyi frontend formatına çevir
       const formattedUsers: User[] = data.map((user: any) => {
         const isAdmin = user.is_admin || user.isAdmin || false;
         const userType = isAdmin ? 'admin' : (user.user_type || user.userType || 'normal');
@@ -189,7 +182,6 @@ function App() {
     }
   };
 
-  // Kalan gün hesaplama fonksiyonu
   const calculateRemainingDays = (expiryDate: string): number => {
     const expiry = new Date(expiryDate);
     const today = new Date();
@@ -226,7 +218,6 @@ function App() {
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
     if (savedLogin) {
       const login = JSON.parse(savedLogin);
-      // Eski veri formatını yeni formata çevir
       const updatedLogin = {
         ...login,
         userType: login.userType || (login.isAdmin ? 'admin' : 'normal'),
@@ -236,7 +227,6 @@ function App() {
       setLoginData(updatedLogin);
       if (login.isLoggedIn) {
         setActiveTab('send');
-        // Admin ise kullanıcıları çek
         if (login.isAdmin) {
           fetchUsers();
         }
@@ -259,26 +249,21 @@ function App() {
     }
   }, [loginData.isLoggedIn, loginData.isAdmin, loginData.token, backendUrl]);
 
-  // Otomatik logout için event listener'ları
   useEffect(() => {
     if (loginData.isLoggedIn) {
-      // Timer'ı başlat
       resetLogoutTimer();
 
-      // Event listener'ları ekle
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
       
       events.forEach(event => {
         document.addEventListener(event, handleUserActivity, true);
       });
 
-      // Cleanup function
       return () => {
         events.forEach(event => {
           document.removeEventListener(event, handleUserActivity, true);
         });
         
-        // Timer'ları temizle
         if (logoutTimerRef.current) {
           clearTimeout(logoutTimerRef.current);
         }
@@ -292,18 +277,15 @@ function App() {
     }
   }, [loginData.isLoggedIn]);
 
-  // Kullanıcılar değiştiğinde localStorage'a kaydet (sadece cache amaçlı)
   useEffect(() => {
     localStorage.setItem('smsHistory', JSON.stringify(smsHistory));
     localStorage.setItem('loginData', JSON.stringify(loginData));
-    // Kullanıcıları artık localStorage'a kaydetmiyoruz, sadece API'den çekiyoruz
   }, [smsHistory, loginData]);
 
   useEffect(() => {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // Kullanıcıların kalan günlerini güncelle
   useEffect(() => {
     const updateUserDays = () => {
       setUsers(prevUsers => 
@@ -323,7 +305,6 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Kullanıcılar sekmesine geçildiğinde kullanıcıları çek
   useEffect(() => {
     if (activeTab === 'users' && loginData.isAdmin && loginData.token) {
       fetchUsers();
@@ -394,7 +375,6 @@ function App() {
       
       const data = await res.json();
       
-      // Yeni token varsa güncelle
       if (data.new_token) {
         setLoginData(prev => ({
           ...prev,
@@ -406,7 +386,6 @@ function App() {
         }));
       }
       
-      // Kullanıcı eklendikten sonra listeyi yenile
       await fetchUsers();
       
       setNewUserKey('');
@@ -436,7 +415,6 @@ function App() {
       
       const data = await res.json();
       
-      // Yeni token varsa güncelle
       if (data.new_token) {
         setLoginData(prev => ({
           ...prev,
@@ -448,7 +426,6 @@ function App() {
         }));
       }
       
-      // Kullanıcı silindikten sonra listeyi yenile
       await fetchUsers();
       showToast('Kullanıcı silindi', 'success');
     } catch (err: any) {
@@ -482,7 +459,6 @@ function App() {
         return;
       }
 
-      // Yeni token varsa güncelle
       if (data.new_token) {
         setLoginData(prev => ({
           ...prev,
@@ -494,34 +470,29 @@ function App() {
         }));
       }
 
-      if (data.access_token) {
-        // 2FA kontrolü
-        if (data.requires_2fa) {
-          setTempToken(data.temp_token);
-          setPendingLogin(true);
-        } else {
-          const loginInfo = {
-            isLoggedIn: true,
-            isAdmin: data.is_admin,
-            token: data.access_token,
-            userType: data.user_type,
-            dailyLimit: data.daily_limit,
-            dailyUsed: data.daily_used
-          };
+      if (data.requires_2fa) {
+        setTempToken(data.temp_token);
+        setPendingLogin(true);
+      } else if (data.access_token) {
+        const loginInfo = {
+          isLoggedIn: true,
+          isAdmin: data.is_admin,
+          token: data.access_token,
+          userType: data.user_type,
+          dailyLimit: data.daily_limit,
+          dailyUsed: data.daily_used
+        };
 
-          setLoginData(loginInfo);
-          localStorage.setItem('loginData', JSON.stringify(loginInfo));
-          setActiveTab('send');
-          showToast('Giriş başarılı!', 'success');
+        setLoginData(loginInfo);
+        localStorage.setItem('loginData', JSON.stringify(loginInfo));
+        setActiveTab('send');
+        showToast('Giriş başarılı!', 'success');
 
-          // Admin ise kullanıcıları çek
-          if (data.is_admin) {
-            fetchUsers();
-          }
-
-          // Otomatik logout timer'ını başlat
-          resetLogoutTimer();
+        if (data.is_admin) {
+          fetchUsers();
         }
+
+        resetLogoutTimer();
       }
 
     } catch (err) {
@@ -569,12 +540,10 @@ function App() {
         setActiveTab('send');
         showToast('Giriş başarılı!', 'success');
 
-        // Admin ise kullanıcıları çek
         if (data.is_admin) {
           fetchUsers();
         }
 
-        // Otomatik logout timer'ını başlat
         resetLogoutTimer();
       } else {
         showToast(data.detail || '2FA kodu geçersiz', 'error');
@@ -587,7 +556,6 @@ function App() {
   const handleToggle2FA = async () => {
     try {
       if (!twoFAEnabled) {
-        // 2FA'yı aktif et
         const response = await fetch(`${backendUrl}/admin/enable-2fa`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${loginData.token}` }
@@ -599,7 +567,6 @@ function App() {
           setShowTwoFASetup(true);
         }
       } else {
-        // 2FA'yı deaktif et
         const response = await fetch(`${backendUrl}/admin/disable-2fa`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${loginData.token}` }
@@ -649,6 +616,7 @@ function App() {
         setShowTwoFASetup(false);
         setTwoFACode('');
         setQrCodeUrl('');
+        showToast('2FA başarıyla aktif edildi!', 'success');
         if (data.new_token) {
           setLoginData(prev => ({
             ...prev,
@@ -693,7 +661,6 @@ function App() {
     setShowLogoutWarning(false);
     setLogoutCountdown(300);
     
-    // Timer'ları temizle
     if (logoutTimerRef.current) {
       clearTimeout(logoutTimerRef.current);
     }
@@ -758,7 +725,6 @@ function App() {
       if (!res.ok) throw new Error(await res.text());
       const result = await res.json();
 
-      // Yeni token varsa güncelle
       if (result.new_token) {
         setLoginData(prev => ({
           ...prev,
@@ -868,112 +834,7 @@ function App() {
     ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
     : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600';
 
-  if (!loginData.isLoggedIn && !pendingLogin) {
-    return (
-      <div className={themeClasses}>
-        <div className="fixed top-4 right-4 z-50 space-y-2">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
-                toast.type === 'success'
-                  ? 'bg-green-500/90 border-green-400 text-white'
-                  : toast.type === 'error'
-                  ? 'bg-red-500/90 border-red-400 text-white'
-                  : 'bg-blue-500/90 border-blue-400 text-white'
-              }`}
-            >
-              <div className="flex items-center">
-                {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
-                {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
-                {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
-                <span className="text-sm font-medium">{toast.message}</span>
-              </div>
-              <button
-                onClick={() => removeToast(toast.id)}
-                className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            onClick={toggleTheme}
-            className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
-          >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
-          </button>
-        </div>
-
-        <div className="flex items-center justify-center min-h-screen">
-          <div className={`${cardClasses} rounded-2xl shadow-2xl p-8 w-full max-w-md`}>
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center mb-4">
-                <Shield className={`w-12 h-12 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Panel</h1>
-              </div>
-              <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Güvenli giriş yapın</p>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Key
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                    placeholder="Key girin"
-                    className={`w-full px-4 py-3 pr-12 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-
-
-              <button
-                onClick={handleLogin}
-                disabled={isLoggingIn}
-                className={`w-full font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center ${
-                  isLoggingIn 
-                    ? 'bg-blue-500 cursor-not-allowed' 
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } text-white`}
-              >
-                {isLoggingIn ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                    Giriş Yapılıyor...
-                  </>
-                ) : (
-                  'Giriş Yap'
-                )}
-              </button>
-
-              <div className={`text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                <p>Güvenli giriş için key'inizi girin</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 2FA doğrulama ekranı
+  // 2FA Doğrulama Ekranı
   if (pendingLogin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-gray-800 text-white">
@@ -1055,3 +916,947 @@ function App() {
       </div>
     );
   }
+
+  // Login Ekranı
+  if (!loginData.isLoggedIn) {
+    return (
+      <div className={themeClasses}>
+        <div className="fixed top-4 right-4 z-50 space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
+                toast.type === 'success'
+                  ? 'bg-green-500/90 border-green-400 text-white'
+                  : toast.type === 'error'
+                  ? 'bg-red-500/90 border-red-400 text-white'
+                  : 'bg-blue-500/90 border-blue-400 text-white'
+              }`}
+            >
+              <div className="flex items-center">
+                {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
+                {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
+                <span className="text-sm font-medium">{toast.message}</span>
+              </div>
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={toggleTheme}
+            className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
+          >
+            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-center min-h-screen">
+          <div className={`${cardClasses} rounded-2xl shadow-2xl p-8 w-full max-w-md`}>
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center mb-4">
+                <Shield className={`w-12 h-12 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Panel</h1>
+              </div>
+              <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Güvenli giriş yapın</p>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className={`block text-sm font-medium mb-2 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                    placeholder="Key girin"
+                    className={`w-full px-4 py-3 pr-12 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={handleLogin}
+                disabled={isLoggingIn}
+                className={`w-full font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center ${
+                  isLoggingIn 
+                    ? 'bg-blue-500 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white`}
+              >
+                {isLoggingIn ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Giriş Yapılıyor...
+                  </>
+                ) : (
+                  'Giriş Yap'
+                )}
+              </button>
+
+              <div className={`text-center text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p>Güvenli giriş için key'inizi girin</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Ana Panel
+  return (
+    <div className={themeClasses}>
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-center justify-between p-4 rounded-lg shadow-lg backdrop-blur-lg border transition-all duration-300 transform translate-x-0 ${
+              toast.type === 'success'
+                ? 'bg-green-500/90 border-green-400 text-white'
+                : toast.type === 'error'
+                ? 'bg-red-500/90 border-red-400 text-white'
+                : 'bg-blue-500/90 border-blue-400 text-white'
+            }`}
+          >
+            <div className="flex items-center">
+              {toast.type === 'success' && <CheckCircle className="w-5 h-5 mr-2" />}
+              {toast.type === 'error' && <AlertCircle className="w-5 h-5 mr-2" />}
+              {toast.type === 'info' && <MessageSquare className="w-5 h-5 mr-2" />}
+              <span className="text-sm font-medium">{toast.message}</span>
+            </div>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="ml-4 p-1 rounded-full hover:bg-white/20 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Logout Warning Modal */}
+      {showLogoutWarning && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className={`${cardClasses} rounded-2xl p-6 max-w-md w-full mx-4`}>
+            <div className="text-center">
+              <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+              <h3 className={`text-xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Oturum Sona Eriyor
+              </h3>
+              <p className={`mb-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {Math.floor(logoutCountdown / 60)}:{(logoutCountdown % 60).toString().padStart(2, '0')} sonra otomatik çıkış yapılacak
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowLogoutWarning(false);
+                    resetLogoutTimer();
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${buttonClasses} text-white`}
+                >
+                  Devam Et
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
+                    isDarkMode 
+                      ? 'bg-gray-600 hover:bg-gray-700 text-white' 
+                      : 'bg-gray-500 hover:bg-gray-600 text-white'
+                  }`}
+                >
+                  Çıkış Yap
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2FA Setup Modal */}
+      {showTwoFASetup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className={`${cardClasses} rounded-2xl p-6 max-w-md w-full mx-4`}>
+            <div className="text-center">
+              <QrCode className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+              <h3 className={`text-xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                2FA Kurulumu
+              </h3>
+              
+              {qrCodeUrl && (
+                <div className="mb-4">
+                  <img src={qrCodeUrl} alt="QR Code" className="mx-auto mb-2 rounded-lg" />
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    QR kodu Google Authenticator ile tarayın
+                  </p>
+                </div>
+              )}
+              
+              <div className="mb-4">
+                <input
+                  type="text"
+                  value={twoFACode}
+                  onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6 haneli kod"
+                  className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses} text-center text-xl tracking-widest`}
+                  maxLength={6}
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleConfirm2FA}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${buttonClasses} text-white`}
+                >
+                  Onayla
+                </button>
+                <button
+                  onClick={() => {
+                    setShowTwoFASetup(false);
+                    setTwoFACode('');
+                    setQrCodeUrl('');
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
+                    isDarkMode 
+                      ? 'bg-gray-600 hover:bg-gray-700 text-white' 
+                      : 'bg-gray-500 hover:bg-gray-600 text-white'
+                  }`}
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className={`${cardClasses} rounded-b-2xl shadow-xl`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center">
+              <Shield className={`w-8 h-8 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+              <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Panel</h1>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={toggleTheme}
+                className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition-colors`}
+              >
+                {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
+              </button>
+              
+              <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {loginData.isAdmin ? 'Admin' : `${loginData.userType} Kullanıcı`}
+              </div>
+              
+              <button
+                onClick={handleLogout}
+                className={`flex items-center px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
+                  isDarkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Çıkış
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className={`${cardClasses} rounded-xl p-1`}>
+          <nav className="flex space-x-1">
+            {availableTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                    activeTab === tab.id
+                      ? `${buttonClasses} text-white shadow-lg`
+                      : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                  }`}
+                >
+                  <Icon className="w-5 h-5 mr-2" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-8">
+        {/* SMS Gönder Tab */}
+        {activeTab === 'send' && (
+          <div className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className={`${cardClasses} rounded-xl p-6`}>
+                <div className="flex items-center">
+                  <Target className="w-8 h-8 text-blue-500 mr-3" />
+                  <div>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Toplam Gönderim</p>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {getTotalStats().total}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className={`${cardClasses} rounded-xl p-6`}>
+                <div className="flex items-center">
+                  <CheckCircle className="w-8 h-8 text-green-500 mr-3" />
+                  <div>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Başarılı</p>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {getTotalStats().sent}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className={`${cardClasses} rounded-xl p-6`}>
+                <div className="flex items-center">
+                  <AlertCircle className="w-8 h-8 text-red-500 mr-3" />
+                  <div>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Başarısız</p>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {getTotalStats().failed}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className={`${cardClasses} rounded-xl p-6`}>
+                <div className="flex items-center">
+                  <BarChart3 className="w-8 h-8 text-purple-500 mr-3" />
+                  <div>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Başarı Oranı</p>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {getTotalStats().total > 0 
+                        ? `${Math.round((getTotalStats().sent / getTotalStats().total) * 100)}%`
+                        : '0%'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SMS Form */}
+            <div className={`${cardClasses} rounded-xl p-8`}>
+              <div className="flex items-center mb-6">
+                <Send className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Gönder</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <Phone className="w-4 h-4 inline mr-2" />
+                    Telefon Numarası
+                  </label>
+                  <input
+                    type="text"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="5xxxxxxxxx"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    maxLength={10}
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <MessageSquare className="w-4 h-4 inline mr-2" />
+                    SMS Sayısı
+                  </label>
+                  <input
+                    type="number"
+                    value={count || ''}
+                    onChange={(e) => setCount(Math.max(0, parseInt(e.target.value) || 0))}
+                    placeholder="100"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    min="1"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-6">
+                <label className={`block text-sm font-medium mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Gönderim Modu
+                </label>
+                <div className="flex space-x-4">
+                  <button
+                    onClick={() => setMode('normal')}
+                    className={`flex items-center px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      mode === 'normal'
+                        ? `${buttonClasses} text-white`
+                        : `${isDarkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`
+                    }`}
+                  >
+                    <Clock className="w-5 h-5 mr-2" />
+                    Normal
+                  </button>
+                  <button
+                    onClick={() => setMode('turbo')}
+                    className={`flex items-center px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      mode === 'turbo'
+                        ? `${buttonClasses} text-white`
+                        : `${isDarkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`
+                    }`}
+                  >
+                    <Zap className="w-5 h-5 mr-2" />
+                    Turbo
+                  </button>
+                </div>
+              </div>
+              
+              <button
+                onClick={sendSMS}
+                disabled={isLoading || !phone || count === 0}
+                className={`w-full mt-6 py-4 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${
+                  isLoading || !phone || count === 0
+                    ? `${isDarkMode ? 'bg-gray-600 text-gray-400' : 'bg-gray-300 text-gray-500'} cursor-not-allowed`
+                    : `${buttonClasses} text-white hover:shadow-lg transform hover:-translate-y-0.5`
+                }`}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Gönderiliyor...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5 mr-2" />
+                    SMS Gönder
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Geçmiş Tab */}
+        {activeTab === 'history' && (
+          <div className="space-y-6">
+            <div className={`${cardClasses} rounded-xl p-8`}>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <History className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                  <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Geçmişi</h2>
+                </div>
+                
+                <button
+                  onClick={clearHistory}
+                  className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                    isDarkMode 
+                      ? 'bg-red-600 hover:bg-red-700 text-white' 
+                      : 'bg-red-500 hover:bg-red-600 text-white'
+                  }`}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Temizle
+                </button>
+              </div>
+              
+              {smsHistory.length === 0 ? (
+                <div className="text-center py-12">
+                  <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                  <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Henüz SMS gönderilmemiş
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Alıcı
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Sayı
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Mod
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Durum
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Sonuç
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Tarih
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentLogs.map((sms) => (
+                          <tr key={sms.id} className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <td className={`py-3 px-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {sms.recipient}
+                            </td>
+                            <td className={`py-3 px-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {sms.count}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                sms.mode === 'turbo'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {sms.mode === 'turbo' ? (
+                                  <>
+                                    <Zap className="w-3 h-3 mr-1" />
+                                    Turbo
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    Normal
+                                  </>
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                {getStatusIcon(sms.status)}
+                                <span className={`ml-2 text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                  {getStatusText(sms.status)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={`py-3 px-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {sms.status === 'completed' && (
+                                <span className="text-sm">
+                                  ✅ {sms.successCount} / ❌ {sms.failedCount}
+                                </span>
+                              )}
+                            </td>
+                            <td className={`py-3 px-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                              {sms.timestamp}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-6">
+                      <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {startIndex + 1}-{Math.min(endIndex, smsHistory.length)} / {smsHistory.length} kayıt
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className={`p-2 rounded-lg transition-colors ${
+                            currentPage === 1
+                              ? `${isDarkMode ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => goToPage(page)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              currentPage === page
+                                ? `${buttonClasses} text-white`
+                                : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        
+                        <button
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className={`p-2 rounded-lg transition-colors ${
+                            currentPage === totalPages
+                              ? `${isDarkMode ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Ayarlar Tab */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div className={`${cardClasses} rounded-xl p-8`}>
+              <div className="flex items-center mb-6">
+                <Settings className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Sistem Ayarları</h2>
+              </div>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    SMS API URL
+                  </label>
+                  <input
+                    type="text"
+                    value={apiUrl}
+                    onChange={(e) => setApiUrl(e.target.value)}
+                    placeholder="API URL'sini girin"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Backend URL
+                  </label>
+                  <input
+                    type="text"
+                    value={backendUrl}
+                    onChange={(e) => setBackendUrl(e.target.value)}
+                    placeholder="Backend URL'sini girin"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                </div>
+
+                {/* 2FA Ayarları */}
+                <div className={`border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} pt-6`}>
+                  <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    İki Faktörlü Doğrulama (2FA)
+                  </h3>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        2FA Durumu
+                      </p>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {twoFAEnabled ? 'İki faktörlü doğrulama aktif' : 'İki faktörlü doğrulama pasif'}
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={handleToggle2FA}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        twoFAEnabled 
+                          ? 'bg-blue-600' 
+                          : isDarkMode ? 'bg-gray-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          twoFAEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  
+                  {twoFAEnabled && (
+                    <div className={`mt-4 p-4 rounded-lg ${isDarkMode ? 'bg-green-900/20 border border-green-800' : 'bg-green-50 border border-green-200'}`}>
+                      <div className="flex items-center">
+                        <Shield className="w-5 h-5 text-green-500 mr-2" />
+                        <span className={`text-sm font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}>
+                          2FA aktif - Hesabınız güvende!
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${backendUrl}/admin/set-api-url`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${loginData.token}`,
+                        },
+                        body: JSON.stringify({ api_url: apiUrl }),
+                      });
+                      
+                      if (res.ok) {
+                        showToast('Ayarlar kaydedildi!', 'success');
+                      } else {
+                        throw new Error('Kaydetme hatası');
+                      }
+                    } catch (err) {
+                      showToast('Ayarlar kaydedilemedi!', 'error');
+                    }
+                  }}
+                  className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${buttonClasses} text-white`}
+                >
+                  Ayarları Kaydet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Kullanıcılar Tab */}
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            {/* Kullanıcı Ekleme Formu */}
+            <div className={`${cardClasses} rounded-xl p-8`}>
+              <div className="flex items-center mb-6">
+                <UserPlus className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Yeni Kullanıcı Ekle</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Key
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserKey}
+                    onChange={(e) => setNewUserKey(e.target.value)}
+                    placeholder="Kullanıcı key'i"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Tag
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserTag}
+                    onChange={(e) => setNewUserTag(e.target.value)}
+                    placeholder="Kullanıcı tag'i"
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Süre (Gün)
+                  </label>
+                  <input
+                    type="number"
+                    value={newUserDays}
+                    onChange={(e) => setNewUserDays(Math.max(1, parseInt(e.target.value) || 1))}
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                    min="1"
+                  />
+                </div>
+                
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Tip
+                  </label>
+                  <select
+                    value={newUserType}
+                    onChange={(e) => setNewUserType(e.target.value as 'normal' | 'premium')}
+                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="premium">Premium</option>
+                  </select>
+                </div>
+              </div>
+              
+              <button
+                onClick={addUser}
+                className={`mt-4 px-6 py-3 rounded-lg font-medium transition-all duration-200 ${buttonClasses} text-white`}
+              >
+                <UserPlus className="w-5 h-5 mr-2 inline" />
+                Kullanıcı Ekle
+              </button>
+            </div>
+
+            {/* Kullanıcı Listesi */}
+            <div className={`${cardClasses} rounded-xl p-8`}>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <Users className={`w-6 h-6 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                  <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Kullanıcılar</h2>
+                </div>
+              </div>
+              
+              {users.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                  <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    Henüz kullanıcı eklenmemiş
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Key
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Tag
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Tip
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Durum
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Kalan Gün
+                          </th>
+                          <th className={`text-left py-3 px-4 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            İşlemler
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentUsers.map((user) => (
+                          <tr key={user.id} className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <td className={`py-3 px-4 font-mono text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {user.key}
+                            </td>
+                            <td className={`py-3 px-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {user.tag}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                user.userType === 'admin'
+                                  ? 'bg-red-100 text-red-800'
+                                  : user.userType === 'premium'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {user.userType === 'admin' ? 'Admin' : user.userType === 'premium' ? 'Premium' : 'Normal'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                user.isActive
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {user.isActive ? 'Aktif' : 'Pasif'}
+                              </span>
+                            </td>
+                            <td className={`py-3 px-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {user.remainingDays} gün
+                            </td>
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => deleteUser(user.id)}
+                                className={`p-2 rounded-lg transition-colors ${
+                                  isDarkMode 
+                                    ? 'text-red-400 hover:bg-red-900/20' 
+                                    : 'text-red-600 hover:bg-red-50'
+                                }`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* User Pagination */}
+                  {totalUserPages > 1 && (
+                    <div className="flex items-center justify-between mt-6">
+                      <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {userStartIndex + 1}-{Math.min(userEndIndex, users.length)} / {users.length} kullanıcı
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => goToUserPage(currentUserPage - 1)}
+                          disabled={currentUserPage === 1}
+                          className={`p-2 rounded-lg transition-colors ${
+                            currentUserPage === 1
+                              ? `${isDarkMode ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        
+                        {Array.from({ length: totalUserPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => goToUserPage(page)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              currentUserPage === page
+                                ? `${buttonClasses} text-white`
+                                : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        
+                        <button
+                          onClick={() => goToUserPage(currentUserPage + 1)}
+                          disabled={currentUserPage === totalUserPages}
+                          className={`p-2 rounded-lg transition-colors ${
+                            currentUserPage === totalUserPages
+                              ? `${isDarkMode ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
+                              : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`
+                          }`}
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;
