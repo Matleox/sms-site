@@ -48,11 +48,7 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
-declare global {
-  interface Window {
-    grecaptcha: any;
-  }
-}
+
 
 function App() {
   const [activeTab, setActiveTab] = useState('login');
@@ -85,15 +81,11 @@ function App() {
   const [historyTab, setHistoryTab] = useState<'sms' | 'user'>('sms');
   const [userLogs, setUserLogs] = useState<UserLog[]>([]);
   const [currentUserLogPage, setCurrentUserLogPage] = useState(1);
-  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState('');
-  const [recaptchaResponse, setRecaptchaResponse] = useState('');
-  const [recaptchaSecretKey, setRecaptchaSecretKey] = useState('');
   const [showLogoutWarning, setShowLogoutWarning] = useState(false);
   const [logoutCountdown, setLogoutCountdown] = useState(300); // 5 dakika
   const logsPerPage = 10;
   const usersPerPage = 10;
   const userLogsPerPage = 10;
-  const recaptchaWidgetId = useRef<number | null>(null);
   const logoutTimerRef = useRef<number | null>(null);
   const warningTimerRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
@@ -223,15 +215,6 @@ function App() {
       .then(data => setApiUrl(data.api_url || ''))
       .catch(err => console.error('API URL alınamadı:', err));
 
-    // reCAPTCHA site key'ini yükle
-    fetch(`${backendUrl}/get-recaptcha-site-key`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then(res => res.json())
-      .then(data => setRecaptchaSiteKey(data.site_key || ''))
-      .catch(err => console.error('reCAPTCHA site key alınamadı:', err));
-
     const savedHistory = localStorage.getItem('smsHistory');
     const savedLogin = localStorage.getItem('loginData');
     if (savedHistory) setSmsHistory(JSON.parse(savedHistory));
@@ -255,30 +238,7 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    // reCAPTCHA widget'ını render et
-    if (recaptchaSiteKey && window.grecaptcha && !loginData.isLoggedIn) {
-      // Container'ı temizle
-      const container = document.getElementById('recaptcha-container');
-      if (container) {
-        container.innerHTML = '';
-      }
-      
-      // Widget ID'yi sıfırla
-      recaptchaWidgetId.current = null;
-      
-      // Yeni widget oluştur
-      setTimeout(() => {
-        if (window.grecaptcha && recaptchaSiteKey) {
-          recaptchaWidgetId.current = window.grecaptcha.render('recaptcha-container', {
-            sitekey: recaptchaSiteKey,
-            callback: (response: string) => setRecaptchaResponse(response),
-            'expired-callback': () => setRecaptchaResponse('')
-          });
-        }
-      }, 100); // Küçük bir gecikme ile
-    }
-  }, [recaptchaSiteKey, loginData.isLoggedIn]); // loginData.isLoggedIn değişince tetikle
+
 
   // Otomatik logout için event listener'ları
   useEffect(() => {
@@ -413,6 +373,20 @@ function App() {
       
       if (!res.ok) throw new Error(await res.text());
       
+      const data = await res.json();
+      
+      // Yeni token varsa güncelle
+      if (data.new_token) {
+        setLoginData(prev => ({
+          ...prev,
+          token: data.new_token
+        }));
+        localStorage.setItem('loginData', JSON.stringify({
+          ...loginData,
+          token: data.new_token
+        }));
+      }
+      
       // Kullanıcı eklendikten sonra listeyi yenile
       await fetchUsers();
       
@@ -441,6 +415,20 @@ function App() {
       
       if (!res.ok) throw new Error(await res.text());
       
+      const data = await res.json();
+      
+      // Yeni token varsa güncelle
+      if (data.new_token) {
+        setLoginData(prev => ({
+          ...prev,
+          token: data.new_token
+        }));
+        localStorage.setItem('loginData', JSON.stringify({
+          ...loginData,
+          token: data.new_token
+        }));
+      }
+      
       // Kullanıcı silindikten sonra listeyi yenile
       await fetchUsers();
       showToast('Kullanıcı silindi', 'success');
@@ -450,98 +438,99 @@ function App() {
   };
 
   const handleLogin = async () => {
-    if (!key) {
+    if (!key.trim()) {
       showToast('Lütfen key girin!', 'error');
       return;
     }
 
-    // reCAPTCHA kontrolü (eğer site key varsa)
-    if (recaptchaSiteKey && !recaptchaResponse) {
-      showToast('Lütfen reCAPTCHA\'yı tamamlayın!', 'error');
-      return;
-    }
-
     setIsLoggingIn(true);
-    
-    // Simüle loading süresi
-    setTimeout(async () => {
-      try {
-        const res = await fetch(`${backendUrl}/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            key,
-            recaptcha_response: recaptchaResponse 
-          }),
-        });
-        if (!res.ok) {
-          const errorText = await res.text();
-          
-          if (res.status === 404) {
-            showToast('Key bulunamadı!', 'error');
-            return;
-          }
-          
-          if (res.status === 400) {
-            if (errorText.includes('reCAPTCHA')) {
-              showToast('reCAPTCHA doğrulaması başarısız!', 'error');
-              return;
-            }
-            if (errorText.includes('Geçersiz key')) {
-              showToast('Hatalı Key!', 'error');
-              return;
-            }
-            if (errorText.includes('süresi dolmuş')) {
-              showToast('Süresi Dolmuş Key!', 'error');
-              return;
-            }
-            throw new Error(errorText);
-          }
-          
-          if (res.status === 401) {
-            if (errorText.includes('Geçersiz key')) {
-              showToast('Hatalı Key!', 'error');
-              return;
-            }
-            if (errorText.includes('süresi dolmuş')) {
-              showToast('Süresi Dolmuş Key!', 'error');
-              return;
-            }
-            throw new Error(errorText);
-          }
-          
-          throw new Error(errorText);
-        }
-        const data = await res.json();
-        const userType = data.is_admin ? 'admin' : (data.user_type || 'normal');
-        const dailyLimit = data.is_admin ? 0 : (data.user_type === 'premium' ? 0 : 500);
-        
-        setLoginData({ 
-          isLoggedIn: true, 
-          isAdmin: data.is_admin, 
-          token: data.access_token,
-          dailyLimit: dailyLimit,
-          dailyUsed: data.daily_used || 0,
-          userType: userType
-        });
-        setActiveTab('send');
-        setKey('');
-        setRecaptchaResponse(''); // reCAPTCHA'yı sıfırla
-        showToast('Başarıyla giriş yapıldı', 'success');
-        
-        // Admin ise kullanıcıları çek
-        if (data.is_admin) {
-          setTimeout(() => fetchUsers(), 1000); // Login işlemi tamamlandıktan sonra
-        }
-      } catch (err: any) {
-        showToast(`Hata: ${err.message}`, 'error');
-      } finally {
-        setIsLoggingIn(false);
+    try {
+      const res = await fetch(`${backendUrl}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          key: key.trim()
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        let errorText = data.detail || 'Giriş başarısız!';
+        showToast(errorText, 'error');
+        return;
       }
-    }, 1500); // 1.5 saniye loading
+
+      // Yeni token varsa güncelle
+      if (data.new_token) {
+        setLoginData(prev => ({
+          ...prev,
+          token: data.new_token
+        }));
+        localStorage.setItem('loginData', JSON.stringify({
+          ...loginData,
+          token: data.new_token
+        }));
+      }
+
+      const loginInfo = {
+        isLoggedIn: true,
+        isAdmin: data.is_admin,
+        token: data.access_token,
+        userType: data.user_type,
+        dailyLimit: data.daily_limit,
+        dailyUsed: data.daily_used
+      };
+
+      setLoginData(loginInfo);
+      localStorage.setItem('loginData', JSON.stringify(loginInfo));
+      setActiveTab('send');
+      showToast('Giriş başarılı!', 'success');
+
+      // Admin ise kullanıcıları çek
+      if (data.is_admin) {
+        fetchUsers();
+      }
+
+      // Otomatik logout timer'ını başlat
+      resetLogoutTimer();
+
+    } catch (err) {
+      console.error('Login hatası:', err);
+      showToast('Bağlantı hatası!', 'error');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleLogout = () => {
+    setLoginData({ 
+      isLoggedIn: false, 
+      isAdmin: false, 
+      dailyLimit: 500,
+      dailyUsed: 0,
+      userType: 'normal'
+    });
+    setActiveTab('login');
+    setKey('');
+    setPhone('');
+    setCount(0);
+    setMode('turbo');
+    setUsers([]);
+    setUserLogs([]);
+    setCurrentPage(1);
+    setCurrentUserPage(1);
+    setCurrentUserLogPage(1);
+    setNewUserKey('');
+    setNewUserTag('');
+    setNewUserDays(30);
+    setNewUserType('normal');
+    setHistoryTab('sms');
+    setShowLogoutWarning(false);
+    setLogoutCountdown(300);
+    
     // Timer'ları temizle
     if (logoutTimerRef.current) {
       clearTimeout(logoutTimerRef.current);
@@ -552,31 +541,9 @@ function App() {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
     }
-
-    // reCAPTCHA'yı tamamen temizle
-    if (recaptchaWidgetId.current && window.grecaptcha) {
-      try {
-        window.grecaptcha.reset(recaptchaWidgetId.current);
-      } catch (e) {
-        console.log('reCAPTCHA reset hatası:', e);
-      }
-    }
-    recaptchaWidgetId.current = null; // Widget ID'yi sıfırla
-
-    setLoginData({ 
-      isLoggedIn: false, 
-      isAdmin: false, 
-      dailyLimit: 500,
-      dailyUsed: 0,
-      userType: 'normal'
-    });
-    setActiveTab('login');
-    setKey('');
-    setRecaptchaResponse(''); // reCAPTCHA response'u temizle
-    setUsers([]); // Kullanıcıları temizle
-    setShowLogoutWarning(false); // Uyarı modal'ını kapat
-    setLogoutCountdown(30); // Countdown'ı sıfırla
-    showToast('Başarıyla çıkış yapıldı', 'error');
+    
+    localStorage.removeItem('loginData');
+    showToast('Çıkış yapıldı!', 'info');
   };
 
   const sendSMS = async () => {
@@ -628,6 +595,18 @@ function App() {
 
       if (!res.ok) throw new Error(await res.text());
       const result = await res.json();
+
+      // Yeni token varsa güncelle
+      if (result.new_token) {
+        setLoginData(prev => ({
+          ...prev,
+          token: result.new_token
+        }));
+        localStorage.setItem('loginData', JSON.stringify({
+          ...loginData,
+          token: result.new_token
+        }));
+      }
 
       setSmsHistory(prev => prev.map(sms =>
         sms.id === newSMS.id
@@ -774,6 +753,7 @@ function App() {
                 <Shield className={`w-12 h-12 mr-3 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                 <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>SMS Panel</h1>
               </div>
+              <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Güvenli giriş yapın</p>
             </div>
 
             <div className="space-y-6">
@@ -800,12 +780,7 @@ function App() {
                 </div>
               </div>
 
-              {/* reCAPTCHA */}
-              {recaptchaSiteKey && (
-                <div className="flex justify-center">
-                  <div id="recaptcha-container"></div>
-                </div>
-              )}
+
 
               <button
                 onClick={handleLogin}
@@ -1009,7 +984,7 @@ function App() {
                       onChange={(e) => setCount(parseInt(e.target.value))}
                       className="w-full h-3 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
                     />
-                    <div className={`text-center mt-4 p-4 rounded-lg border ${isDarkMode ? 'bg-gray-700/30 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="text-center mt-4">
                       <span className={`text-4xl font-bold ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>{count}</span>
                       <span className={`ml-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>SMS</span>
                     </div>
@@ -1374,94 +1349,6 @@ function App() {
                   >
                     Kaydet
                   </button>
-                </div>
-
-                <div className="text-center">
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    reCAPTCHA Site Key
-                  </label>
-                  <input
-                    type="text"
-                    value={recaptchaSiteKey}
-                    onChange={(e) => setRecaptchaSiteKey(e.target.value)}
-                    placeholder="6Lxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    className={`w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
-                  />
-                </div>
-
-                <div className="text-center">
-                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    reCAPTCHA Secret Key
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={recaptchaSecretKey}
-                      onChange={(e) => setRecaptchaSecretKey(e.target.value)}
-                      placeholder="6Lxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      className={`w-full px-4 py-3 pr-12 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const res = await fetch(`${backendUrl}/admin/set-recaptcha-keys`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${loginData.token}`,
-                        },
-                        body: JSON.stringify({ 
-                          site_key: recaptchaSiteKey,
-                          secret_key: recaptchaSecretKey 
-                        }),
-                      });
-                      if (res.ok) {
-                        showToast('reCAPTCHA anahtarları kaydedildi!', 'success');
-                        // Sayfayı yenile
-                        window.location.reload();
-                      } else {
-                        showToast('Kaydetme başarısız!', 'error');
-                      }
-                    }}
-                    className={`mt-2 px-4 py-2 rounded-lg ${buttonClasses} text-white`}
-                  >
-                    Kaydet
-                  </button>
-                </div>
-
-                <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-blue-900/20 border border-blue-700/50' : 'bg-blue-50 border border-blue-200'}`}>
-                  <h3 className={`font-semibold mb-4 flex items-center justify-center ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                    <MessageSquare className="w-5 h-5 mr-2" />
-                    Backend Kurulum Rehberi:
-                  </h3>
-                  <ol className={`text-sm space-y-2 list-decimal list-inside text-center ${isDarkMode ? 'text-blue-200' : 'text-blue-600'}`}>
-                    <li>FastAPI ile API endpoint'leri oluşturun</li>
-                    <li>MySQL bağlantısı ekleyin</li>
-                    <li>/login, /send-sms, /get-api-url endpoint'lerini tanımlayın</li>
-                    <li>JWT ile yetkilendirme yapın</li>
-                    <li>URL'yi yukarıdaki alana girin</li>
-                  </ol>
-                </div>
-
-                <div className={`rounded-xl p-6 ${isDarkMode ? 'bg-purple-900/20 border border-purple-700/50' : 'bg-purple-50 border border-purple-200'}`}>
-                  <h3 className={`font-semibold mb-4 text-center ${isDarkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-                    Sistem Özellikleri:
-                  </h3>
-                  <ul className={`text-sm space-y-1 text-center ${isDarkMode ? 'text-purple-200' : 'text-purple-600'}`}>
-                    <li>• 40+ farklı SMS servisi entegrasyonu</li>
-                    <li>• Normal ve Turbo gönderim modları</li>
-                    <li>• Gerçek zamanlı durum takibi</li>
-                    <li>• Detaylı istatistikler ve raporlama</li>
-                    <li>• Güvenli login sistemi</li>
-                    <li>• Sabit email: {email}</li>
-                  </ul>
                 </div>
               </div>
             </div>
