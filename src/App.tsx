@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Send, History, Settings, MessageSquare, Phone, CheckCircle, AlertCircle, Clock, Shield, LogOut, Zap, Target, BarChart3, Activity, Moon, Sun, Trash2, ChevronLeft, ChevronRight, X, Users, UserPlus, Calendar, Key, Eye, EyeOff } from 'lucide-react';
 
 interface SMSData {
@@ -51,6 +52,8 @@ interface Toast {
 
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('login');
   const [smsHistory, setSmsHistory] = useState<SMSData[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -97,6 +100,8 @@ function App() {
   const [showTwoFASetup, setShowTwoFASetup] = useState(false);
   const [pendingLogin, setPendingLogin] = useState(false);
   const [tempToken, setTempToken] = useState('');
+  const keyInputRef = useRef<HTMLInputElement>(null);
+  const twoFAInputRef = useRef<HTMLInputElement>(null);
 
   const email = 'mehmetyilmaz24121@gmail.com';
 
@@ -334,6 +339,18 @@ function App() {
     }
   }, [activeTab, loginData.isAdmin, loginData.token]);
 
+  useEffect(() => {
+    if (location.pathname === '/login' && keyInputRef.current) {
+      keyInputRef.current.focus();
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (pendingLogin && twoFAInputRef.current) {
+      twoFAInputRef.current.focus();
+    }
+  }, [pendingLogin]);
+
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
   };
@@ -499,7 +516,12 @@ function App() {
         localStorage.setItem('loginData', JSON.stringify(loginInfo));
         setActiveTab('send');
         showToast('Giriş başarılı!', 'success');
-        if (data.is_admin) fetchUsers();
+        if (data.is_admin) {
+          fetchUsers();
+          navigate('/admin');
+        } else {
+          navigate('/panel');
+        }
         resetLogoutTimer();
       }
     } catch (err) {
@@ -538,7 +560,12 @@ function App() {
         setKey('');
         setActiveTab('send');
         showToast('Giriş başarılı!', 'success');
-        if (data.is_admin) fetchUsers();
+        if (data.is_admin) {
+          fetchUsers();
+          navigate('/admin');
+        } else {
+          navigate('/panel');
+        }
         resetLogoutTimer();
       } else {
         showToast(data.detail || '2FA kodu geçersiz', 'error');
@@ -770,6 +797,7 @@ function App() {
 
   // handleLogout fonksiyonunu tekrar ekliyorum
   const handleLogout = () => {
+    navigate('/'); // En başta yönlendir
     setLoginData({ 
       isLoggedIn: false, 
       isAdmin: false, 
@@ -806,6 +834,16 @@ function App() {
     localStorage.removeItem('loginData');
     showToast('Çıkış yapıldı!', 'info');
   };
+
+  // Yönlendirme kontrolü
+  React.useEffect(() => {
+    if (
+      !loginData.isLoggedIn &&
+      (location.pathname === '/admin' || location.pathname === '/panel')
+    ) {
+      navigate('/', { replace: true });
+    }
+  }, [loginData.isLoggedIn, location.pathname, navigate]);
 
   // 2FA Doğrulama Modalı (EN ÜSTE ALINDI)
   if (pendingLogin) {
@@ -853,7 +891,10 @@ function App() {
                   Doğrulama Kodu
                 </label>
                 <input
+                  ref={twoFAInputRef}
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={twoFACode}
                   onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   onKeyPress={(e) => e.key === 'Enter' && handleTwoFALogin()}
@@ -886,8 +927,8 @@ function App() {
     );
   }
 
-  // Giriş ekranı (2FA yoksa veya giriş yapılmamışsa)
-  if (!loginData.isLoggedIn) {
+  // Giriş ekranı (sadece /login adresinde göster)
+  if (!loginData.isLoggedIn && location.pathname === '/login') {
     return (
       <div className={themeClasses}>
         <div className="fixed top-4 right-4 z-50 space-y-2">
@@ -919,61 +960,11 @@ function App() {
         </div>
 
         <div className="absolute top-4 right-4 z-10">
-          <div className="flex items-center space-x-3">
-            {/* Theme Toggle */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="relative w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-300 flex items-center justify-center group"
-              title={isDarkMode ? "Light Mode" : "Dark Mode"}
-            >
-              {isDarkMode ? (
-                <Sun className="w-5 h-5 text-yellow-400 group-hover:rotate-12 transition-transform duration-300" />
-              ) : (
-                <Moon className="w-5 h-5 text-indigo-400 group-hover:-rotate-12 transition-transform duration-300" />
-              )}
-            </button>
-
-            {/* Discord Button */}
-            <button
-              onClick={() => {
-                // Discord kodu buraya gelecek
-                console.log('Discord butonu tıklandı');
-              }}
-              className="relative w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-300 flex items-center justify-center group"
-              title="Discord Sunucusu"
-            >
-              <svg 
-                className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform duration-300" 
-                viewBox="0 0 24 24" 
-                fill="currentColor"
-              >
-                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z"/>
-              </svg>
-            </button>
-          </div>
-          
           <button
             onClick={toggleTheme}
             className={`p-3 rounded-full ${cardClasses} hover:scale-110 transition-all duration-200`}
           >
             {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
-          </button>
-          
-          <button
-            onClick={() => {
-              // Discord link kodu buraya gelecek
-              console.log('Discord butonu tıklandı');
-            }}
-            className="p-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 transition-all duration-300"
-            title="Discord Sunucusu"
-          >
-            <svg 
-              className="w-5 h-5 text-indigo-400" 
-              fill="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-            </svg>
           </button>
         </div>
 
@@ -994,6 +985,7 @@ function App() {
                 </label>
                 <div className="relative">
                   <input
+                    ref={keyInputRef}
                     type={showPassword ? "text" : "password"}
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
@@ -1040,6 +1032,11 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  // Eğer giriş yapılmamışsa ve /admin veya /panel'deyse hiçbir şey gösterme (veya isterseniz bir yükleniyor ekranı koyabilirsiniz)
+  if (!loginData.isLoggedIn && (location.pathname === '/admin' || location.pathname === '/panel')) {
+    return null;
   }
 
   return (
@@ -1694,7 +1691,7 @@ function App() {
                         type="text"
                         value={newUserTag}
                         onChange={(e) => setNewUserTag(e.target.value)}
-                        placeholder="Ahmet"
+                        placeholder="Can"
                         className={`w-full pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputClasses}`}
                       />
                     </div>
@@ -1851,16 +1848,12 @@ function App() {
                           currentUserPage === totalUserPages
                             ? `${isDarkMode ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-not-allowed'}`
                             : `${isDarkMode ? 'text-gray-300 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-100'}`
-                        }`}
-                      >
+                          }`}
+                        >
                         <ChevronRight className="w-5 h-5" />
                       </button>
                     </div>
                   )}
-
-                  <div className={`text-center mt-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Toplam {users.length} kullanıcı, Sayfa {currentUserPage} / {totalUserPages}
-                  </div>
                 </>
               )}
             </div>
